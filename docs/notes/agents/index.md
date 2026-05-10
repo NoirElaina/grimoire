@@ -11,9 +11,14 @@
 
 ## 先写这三类模板
 
-- [Agent 设计模板](/notes/agents/agent-design-template)
-- [System Prompt 模板](/notes/agents/system-prompt-template)
-- [工具调用模板](/notes/agents/tooling-template)
+- [Agent 设计](/notes/agents/agent-design-template)
+- [System Prompt](/notes/agents/system-prompt-template)
+- [工具调用](/notes/agents/tooling-template)
+
+## 源码解析
+
+- [Claude 源码解析](/notes/agents/claude-code-analysis/)
+- [01 Claude Code 泄露事件与架构启示](/notes/agents/claude-code-analysis/first-look)
 
 ## 以后可以继续补
 

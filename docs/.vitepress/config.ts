@@ -61,16 +61,17 @@ export default defineConfig({
         {
           text: 'Agents',
           items: [
-            { text: '专题首页', link: '/notes/agents/' }
+            { text: '专题首页', link: '/notes/agents/' },
+            { text: 'Agent 设计', link: '/notes/agents/agent-design-template' },
+            { text: 'System Prompt', link: '/notes/agents/system-prompt-template' },
+            { text: '工具调用', link: '/notes/agents/tooling-template' }
           ]
         },
         {
-          text: '模板',
-          collapsed: false,
+          text: 'Claude 源码解析',
           items: [
-            { text: 'Agent 设计模板', link: '/notes/agents/agent-design-template' },
-            { text: 'System Prompt 模板', link: '/notes/agents/system-prompt-template' },
-            { text: '工具调用模板', link: '/notes/agents/tooling-template' }
+            { text: '专题说明', link: '/notes/agents/claude-code-analysis/' },
+            { text: '01 Claude Code 泄露事件与架构启示', link: '/notes/agents/claude-code-analysis/first-look' }
           ]
         }
       ],
@@ -85,13 +86,7 @@ export default defineConfig({
         {
           text: 'Java 后端',
           items: [
-            { text: '专题首页', link: '/notes/java-backend/' }
-          ]
-        },
-        {
-          text: '模板',
-          collapsed: false,
-          items: [
+            { text: '专题首页', link: '/notes/java-backend/' },
             { text: 'Spring Boot 项目模板', link: '/notes/java-backend/spring-boot-template' },
             { text: '接口设计模板', link: '/notes/java-backend/api-design-template' },
             { text: '问题排查模板', link: '/notes/java-backend/troubleshooting-template' }
