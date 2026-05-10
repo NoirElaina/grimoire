@@ -123,6 +123,11 @@ export default defineConfig({
               'notes/agents/mcp-protocol.md',
               '/notes/agents/mcp-protocol',
               'MCP 协议'
+            ),
+            createDocItem(
+              'notes/agents/reinforcement-learning.md',
+              '/notes/agents/reinforcement-learning',
+              '强化学习'
             )
           ]
         },
