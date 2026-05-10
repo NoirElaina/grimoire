@@ -242,6 +242,26 @@ export default defineConfig({
           ]
         }
       ],
+      '/notes/mysql/': [
+        {
+          text: '笔记',
+          collapsed: true,
+          items: [
+            { text: '笔记首页', link: '/notes/' }
+          ]
+        },
+        {
+          text: 'MySQL',
+          items: [
+            createDocItem('notes/mysql/index.md', '/notes/mysql/', '专题首页'),
+            createDocItem(
+              'notes/mysql/mysql-engineering.md',
+              '/notes/mysql/mysql-engineering',
+              '01 工程实践'
+            )
+          ]
+        }
+      ],
       '/notes/redis/': [
         {
           text: '笔记',
@@ -294,6 +314,7 @@ export default defineConfig({
           items: [
             { text: 'Agents', link: '/notes/agents/' },
             { text: 'Java 后端', link: '/notes/java-backend/' },
+            { text: 'MySQL', link: '/notes/mysql/' },
             { text: 'Redis', link: '/notes/redis/' },
             { text: 'RabbitMQ', link: '/notes/rabbitmq/' }
           ]
