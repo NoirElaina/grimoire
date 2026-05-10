@@ -19,10 +19,11 @@ sidebarTitle: 专题首页
 - [Spring Boot 项目模板](/notes/java-backend/spring-boot-template)
 - [接口设计模板](/notes/java-backend/api-design-template)
 - [问题排查模板](/notes/java-backend/troubleshooting-template)
+- [JWT 鉴权设计笔记](/notes/java-backend/jwt-auth)
+- [MyBatis-Plus 使用笔记](/notes/java-backend/mybatis-plus)
 
 ## 后面可以继续补
 
-- 鉴权与权限模型
 - MyBatis / JPA 使用规范
 - Redis 设计笔记
 - MQ 与事件驱动模板

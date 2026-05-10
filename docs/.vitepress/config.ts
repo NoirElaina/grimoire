@@ -128,6 +128,46 @@ export default defineConfig({
               'notes/agents/claude-code-analysis/first-look.md',
               '/notes/agents/claude-code-analysis/first-look',
               '01 Claude Code 泄露事件与架构启示'
+            ),
+            createDocItem(
+              'notes/agents/claude-code-analysis/query-engine-main-loop.md',
+              '/notes/agents/claude-code-analysis/query-engine-main-loop',
+              '02 QueryEngine 主循环'
+            ),
+            createDocItem(
+              'notes/agents/claude-code-analysis/context-system.md',
+              '/notes/agents/claude-code-analysis/context-system',
+              '03 上下文系统'
+            ),
+            createDocItem(
+              'notes/agents/claude-code-analysis/permission-system.md',
+              '/notes/agents/claude-code-analysis/permission-system',
+              '04 权限系统'
+            ),
+            createDocItem(
+              'notes/agents/claude-code-analysis/coordinator-and-workers.md',
+              '/notes/agents/claude-code-analysis/coordinator-and-workers',
+              '05 多 worker 编排'
+            ),
+            createDocItem(
+              'notes/agents/claude-code-analysis/platformization.md',
+              '/notes/agents/claude-code-analysis/platformization',
+              '06 平台化'
+            ),
+            createDocItem(
+              'notes/agents/claude-code-analysis/agent-runtime-os.md',
+              '/notes/agents/claude-code-analysis/agent-runtime-os',
+              '07 Agent Runtime 总结'
+            ),
+            createDocItem(
+              'notes/agents/claude-code-analysis/compaction-mechanics.md',
+              '/notes/agents/claude-code-analysis/compaction-mechanics',
+              '08 上下文压缩机制'
+            ),
+            createDocItem(
+              'notes/agents/claude-code-analysis/tool-system.md',
+              '/notes/agents/claude-code-analysis/tool-system',
+              '09 工具系统'
             )
           ]
         }
@@ -158,6 +198,36 @@ export default defineConfig({
               'notes/java-backend/troubleshooting-template.md',
               '/notes/java-backend/troubleshooting-template',
               '问题排查模板'
+            ),
+            createDocItem(
+              'notes/java-backend/jwt-auth.md',
+              '/notes/java-backend/jwt-auth',
+              'JWT 鉴权'
+            ),
+            createDocItem(
+              'notes/java-backend/mybatis-plus.md',
+              '/notes/java-backend/mybatis-plus',
+              'MyBatis-Plus'
+            )
+          ]
+        }
+      ],
+      '/notes/rabbitmq/': [
+        {
+          text: '笔记',
+          collapsed: true,
+          items: [
+            { text: '笔记首页', link: '/notes/' }
+          ]
+        },
+        {
+          text: 'RabbitMQ',
+          items: [
+            createDocItem('notes/rabbitmq/index.md', '/notes/rabbitmq/', '专题首页'),
+            createDocItem(
+              'notes/rabbitmq/message-model.md',
+              '/notes/rabbitmq/message-model',
+              '01 消息模型'
             )
           ]
         }
@@ -173,7 +243,8 @@ export default defineConfig({
           text: '专题入口',
           items: [
             { text: 'Agents', link: '/notes/agents/' },
-            { text: 'Java 后端', link: '/notes/java-backend/' }
+            { text: 'Java 后端', link: '/notes/java-backend/' },
+            { text: 'RabbitMQ', link: '/notes/rabbitmq/' }
           ]
         }
       ],
