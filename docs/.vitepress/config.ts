@@ -12,20 +12,6 @@ const overviewItems = [
   { text: '技术摘记', link: '/api-examples' }
 ]
 
-const agentsItems = [
-  { text: 'Agents 总览', link: '/notes/agents/' },
-  { text: 'Agent 设计模板', link: '/notes/agents/agent-design-template' },
-  { text: 'System Prompt 模板', link: '/notes/agents/system-prompt-template' },
-  { text: '工具调用模板', link: '/notes/agents/tooling-template' }
-]
-
-const javaBackendItems = [
-  { text: 'Java 后端总览', link: '/notes/java-backend/' },
-  { text: 'Spring Boot 项目模板', link: '/notes/java-backend/spring-boot-template' },
-  { text: '接口设计模板', link: '/notes/java-backend/api-design-template' },
-  { text: '问题排查模板', link: '/notes/java-backend/troubleshooting-template' }
-]
-
 // https://vitepress.dev/reference/site-config
 export default defineConfig({
   title: "Grimoire",
@@ -66,28 +52,58 @@ export default defineConfig({
     sidebar: {
       '/notes/agents/': [
         {
-          text: '总览',
-          items: overviewItems
+          text: '笔记',
+          collapsed: true,
+          items: [
+            { text: '笔记首页', link: '/notes/' }
+          ]
         },
         {
           text: 'Agents',
-          items: agentsItems
+          items: [
+            { text: '专题首页', link: '/notes/agents/' }
+          ]
+        },
+        {
+          text: '模板',
+          collapsed: false,
+          items: [
+            { text: 'Agent 设计模板', link: '/notes/agents/agent-design-template' },
+            { text: 'System Prompt 模板', link: '/notes/agents/system-prompt-template' },
+            { text: '工具调用模板', link: '/notes/agents/tooling-template' }
+          ]
         }
       ],
       '/notes/java-backend/': [
         {
-          text: '总览',
-          items: overviewItems
+          text: '笔记',
+          collapsed: true,
+          items: [
+            { text: '笔记首页', link: '/notes/' }
+          ]
         },
         {
           text: 'Java 后端',
-          items: javaBackendItems
+          items: [
+            { text: '专题首页', link: '/notes/java-backend/' }
+          ]
+        },
+        {
+          text: '模板',
+          collapsed: false,
+          items: [
+            { text: 'Spring Boot 项目模板', link: '/notes/java-backend/spring-boot-template' },
+            { text: '接口设计模板', link: '/notes/java-backend/api-design-template' },
+            { text: '问题排查模板', link: '/notes/java-backend/troubleshooting-template' }
+          ]
         }
       ],
       '/notes/': [
         {
-          text: '总览',
-          items: overviewItems
+          text: '笔记',
+          items: [
+            { text: '笔记首页', link: '/notes/' }
+          ]
         },
         {
           text: '专题入口',

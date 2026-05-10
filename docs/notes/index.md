@@ -1,27 +1,36 @@
+---
+pageClass: notes-hub
+---
+
 # 笔记
 
-这里先作为程序员知识库的主体入口，优先承载两类内容：
+这里是知识库的主入口，先围绕两条主线展开：一条写 Agents，一条写 Java 后端。入口页只负责选主题，不把所有链接都堆出来。
 
-- `Agents`：写多 Agent、Prompt、工具调用、上下文编排
-- `Java 后端`：写 Spring Boot、接口设计、服务拆分、排障经验
+<div class="notes-topic-grid">
+  <section class="notes-topic-card">
+    <div class="notes-topic-head">
+      <h2><a href="/notes/agents/">Agents</a></h2>
+      <p>多 Agent、Prompt、工具调用、上下文编排。</p>
+    </div>
+    <div class="notes-topic-actions">
+      <a href="/notes/agents/">进入专题</a>
+    </div>
+  </section>
 
-## 当前主线
-
-### Agents
-
-- [Agents 总览](/notes/agents/)
-- [Agent 设计模板](/notes/agents/agent-design-template)
-- [System Prompt 模板](/notes/agents/system-prompt-template)
-- [工具调用模板](/notes/agents/tooling-template)
-
-### Java 后端
-
-- [Java 后端总览](/notes/java-backend/)
-- [Spring Boot 项目模板](/notes/java-backend/spring-boot-template)
-- [接口设计模板](/notes/java-backend/api-design-template)
-- [问题排查模板](/notes/java-backend/troubleshooting-template)
+  <section class="notes-topic-card">
+    <div class="notes-topic-head">
+      <h2><a href="/notes/java-backend/">Java 后端</a></h2>
+      <p>Spring Boot、接口设计、服务拆分、问题排查。</p>
+    </div>
+    <div class="notes-topic-actions">
+      <a href="/notes/java-backend/">进入专题</a>
+    </div>
+  </section>
+</div>
 
 ## 通用页
 
-- [写作与发布](/markdown-examples)
-- [技术摘记](/api-examples)
+<div class="notes-utility-links">
+  <a href="/markdown-examples">写作与发布</a>
+  <a href="/api-examples">技术摘记</a>
+</div>
