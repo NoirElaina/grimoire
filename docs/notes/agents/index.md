@@ -14,7 +14,7 @@ sidebarTitle: 专题首页
 - `工具页`：工具定义、参数、错误处理、回退策略
 - `案例页`：真实任务里的调用链和问题复盘
 
-## 先写这三类模板
+## 基础工程页
 
 - [Agent 设计](/notes/agents/agent-design-template)
 - [System Prompt](/notes/agents/system-prompt-template)

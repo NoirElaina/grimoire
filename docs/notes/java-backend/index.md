@@ -14,11 +14,11 @@ sidebarTitle: 专题首页
 - `服务实现`：Service、事务、缓存、消息、异步任务
 - `排障手册`：日志、链路、数据库、性能、线上问题
 
-## 起步模板
+## 基础工程页
 
-- [Spring Boot 项目模板](/notes/java-backend/spring-boot-template)
-- [接口设计模板](/notes/java-backend/api-design-template)
-- [问题排查模板](/notes/java-backend/troubleshooting-template)
+- [Spring Boot 项目骨架](/notes/java-backend/spring-boot-template)
+- [接口设计](/notes/java-backend/api-design-template)
+- [问题排查](/notes/java-backend/troubleshooting-template)
 - [JWT 鉴权设计笔记](/notes/java-backend/jwt-auth)
 - [MyBatis-Plus 使用笔记](/notes/java-backend/mybatis-plus)
 - [OpenFeign 使用笔记](/notes/java-backend/openfeign)

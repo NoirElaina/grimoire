@@ -1,201 +1,345 @@
+---
+title: System Prompt
+sidebarTitle: System Prompt
+---
+
 # System Prompt
 
-很多 Agent 不稳定，不是因为模型不行，而是因为长期规则和临时任务被写乱了。
+System Prompt 最大的问题通常不是“写得不够强”，而是**写得太混**。
 
-最常见的情况是：System Prompt 里既有角色设定、又有任务步骤、又有工具说明、又有临时需求，最后谁都不稳定。用户一换问题，提示词里原本想长期生效的规则也开始松动。
+很多项目会把下面这些全塞进去：
 
-所以看待 System Prompt，最好把它理解成一层“长期宪法”，而不是“本轮任务说明书”。
+- 角色定义
+- 当前任务步骤
+- 工具参数说明
+- 输出格式
+- 某次事故后的补丁规则
 
-## System Prompt 到底该放什么
+最后 prompt 越来越长，但系统越来越不稳。  
+所以这篇不讲抽象理念，而是直接讲：**System Prompt 在工程里怎么拆、怎么组装、怎么维护。**
 
-一个比较稳的判断标准是：
+## 先说结论
 
-只把那些“跨任务仍然成立”的规则放进 System Prompt。
+一个可维护的 System Prompt，通常应该满足这 4 个条件：
 
-通常包括这些内容：
+1. 只承载跨任务稳定成立的长期规则。
+2. 运行时变化的内容不要直接写死在 prompt 文本里。
+3. Prompt 最好由代码拼装，而不是只在一个 markdown 里手改。
+4. 角色规则、工具原则、输出协议要分段，便于做 diff 和评审。
+
+一句话就是：
+
+**System Prompt 更像“长期规则模板”，不是“本轮任务说明书”。**
+
+## 先把 3 层输入分开
+
+我更推荐把提示体系硬拆成这三层：
+
+### 1. System Prompt
+
+放长期规则：
 
 - 角色身份
-- 目标优先级
-- 职责边界
-- 行为原则
+- 优先级
+- 边界
 - 输出习惯
-- 失败时的基本处理方式
+- 工具原则
 
-它不应该承载太多短期任务细节。比如：
+### 2. Runtime / Developer Instructions
 
-- 这次要分析哪个仓库
-- 这次要写哪篇文章
-- 这次优先看哪几个文件
+放当前环境事实：
 
-这些更适合放在 user prompt、developer prompt 或运行时上下文里。
+- 当前工作目录
+- 工具权限
+- 项目约定
+- 只读/可写模式
 
-## 为什么很多 System Prompt 会越写越脏
+### 3. User Prompt
 
-因为人很容易把“这次有效的要求”直接补进 System Prompt，觉得省事。
+只放这次任务：
 
-短期看好像更好用，长期就会出现三个问题：
+- 用户目标
+- 当前输入
+- 选中的内容
 
-### 1. 规则互相打架
+只要这三层没分开，调 Prompt 的过程就会越来越像打补丁。
 
-今天加一句“尽量少问问题”，明天再加一句“需求不清晰时必须追问”，后天又补一句“优先直接执行”。最后模型面对冲突规则时，只能自己猜优先级。
+## 一个稳定的 System Prompt 通常长什么样
 
-### 2. Prompt 失去可维护性
+比较推荐固定为 5 段：
 
-当 System Prompt 膨胀成一大段混合文本后，团队很难回答两个问题：
+1. 角色定义
+2. 优先级
+3. 边界和禁止项
+4. 输出协议
+5. 工具使用原则
 
-- 哪些规则是长期稳定的
-- 哪些规则只是为某个任务临时加的
+## 1. 角色定义要写任务，不要写气质
 
-### 3. 调优成本越来越高
+错误写法通常是：
 
-你以为是在调一条规则，实际上动的是整个系统。因为所有任务都共享这一层。
+```text
+你是一个专业、严谨、友好的 AI 助手。
+```
 
-## 一个好用的 System Prompt，通常有五块
+这种句子几乎没有工程约束力。  
+更稳的写法应该直接描述工作对象和成功标准：
 
-不一定非要机械照抄，但结构上大致会稳定在这五块。
+```text
+你是一个面向代码仓库工作的 coding agent。
+你的目标是在用户指定范围内完成修改、验证结果，并清楚解释关键变更。
+```
 
-### 1. 角色定义
+这才是真正能约束行为的内容。
 
-先告诉模型“你是什么”，但不要只写抽象气质。
+## 2. 优先级一定要显式写出来
 
-更稳的写法是：
-
-- 你的工作对象是谁
-- 你的主要职责是什么
-- 你的成功标准是什么
-
-例如：
-
-> 你是一个面向代码仓库工作的 coding agent，目标是在不破坏现有结构的前提下完成用户请求，并把关键变更解释清楚。
-
-这比“你是一个专业、严谨的 AI”有用得多。
-
-### 2. 优先级原则
-
-成熟 Agent 一定要写清优先级，不然规则多了必冲突。
-
-常见优先级通常像这样：
-
-- 先保证安全
-- 再保证正确
-- 再保证可执行
-- 最后才是简洁或速度
-
-没有优先级的规则集，很难在复杂任务里稳定执行。
-
-### 3. 边界与禁止项
-
-这里要明确：
-
-- 什么情况必须停下
-- 什么情况必须说明不确定性
-- 什么情况必须请求确认
-- 哪些行为绝不能做
-
-比如高风险命令、未经验证的断言、编造来源、跳过用户限制，这些都应该在这一层明确说死。
-
-### 4. 输出协议
-
-输出协议不是格式美化，而是稳定协作的关键。
-
-你需要明确：
-
-- 先给结论还是先给过程
-- 是否需要分点
-- 是否必须给文件路径
-- 失败时如何说明缺口
-
-如果输出协议稳定，Agent 的“可读性”和“可接入性”都会明显提升。
-
-### 5. 工具使用原则
-
-System Prompt 可以规定“何时应该查证、何时应该调用工具、何时必须验证”，但不要把全部工具 schema 都塞进去。
-
-更好的做法是：
-
-- 在 System Prompt 里写工具使用原则
-- 把具体工具定义放到独立的工具描述层
-
-这样提示词会更清楚，也更容易扩展。
-
-## System Prompt 不该承担什么
-
-为了避免越写越乱，可以反过来记住几件不该放进去的东西。
-
-### 不放短期任务步骤
-
-比如“先看 `config.ts` 再看 `index.md`”，这是当前任务计划，不是长期规则。
-
-### 不放大段工具参数说明
-
-工具字段、调用示例、错误码这些东西独立维护更稳。
-
-### 不放随时会变的业务背景
-
-如果一条信息经常变，那它就不适合写死在 System Prompt 里。
-
-### 不放为了补某次失败临时加的碎规则
-
-这是最危险的。很多 Prompt 最后会变成补丁堆，就是因为每次出问题都往 System Prompt 上贴一句。
-
-## 写 System Prompt 时，最重要的是可分层
-
-一个健康的 Agent 提示体系，通常至少有三层：
-
-- `System Prompt`
-  长期稳定规则。
-- `Developer / Runtime Instructions`
-  当前环境、工具、权限、工作方式。
-- `User Prompt`
-  本轮任务目标。
-
-这三层一旦混掉，Agent 的行为就很难解释。
-
-所以写 Prompt 时要养成一个习惯：每加一条规则，先问自己一句，这条规则是长期的，还是这次任务才需要的。
-
-## 怎么判断一条规则该不该进入 System Prompt
-
-我平时会用一个简单标准：
-
-如果把当前任务换掉，这条规则大概率仍然成立，那就适合放进去。
+Prompt 稳不稳，很多时候取决于冲突时怎么取舍。
 
 例如：
 
-- “不确定时先说明不确定性”
-- “涉及外部事实时优先查证”
-- “高风险操作需要确认”
+```text
+优先级从高到低：
+1. 避免高风险或越权操作
+2. 保证结论和修改的正确性
+3. 按用户要求完成任务
+4. 保持输出简洁
+```
 
-这些都属于长期规则。
+如果这部分不写，模型遇到冲突时只能自己猜。
 
-但像下面这种就不适合：
+## 3. 边界和禁止项必须可执行
 
-- “这次优先处理 sidebar”
-- “先别动首页结构”
-- “本轮只改文档，不改代码逻辑”
+不要只写“注意安全”。  
+要直接写成能落地判断的规则：
 
-这些是当前任务约束，不是系统宪法。
+```text
+- 不要对未读取过的文件做具体断言
+- 未经确认不要执行高风险写操作
+- 当缺少关键信息时，应先说明缺口再继续
+- 不要编造外部来源或命令执行结果
+```
 
-## System Prompt 的目标不是变长，而是变稳
+这类规则才是真正能进 runtime 的。
 
-很多人误以为强 Prompt 就是长 Prompt，其实不是。
+## 4. 输出协议最好和前端/调用方契合
 
-真正高质量的 System Prompt 往往具备三个特点：
+Prompt 不是作文要求，而是接口协议的一部分。
 
-- 规则少但稳定
-- 优先级清楚
-- 每条都能解释为什么存在
+例如你可以明确：
 
-也就是说，它应该像一份可维护的协议，而不是一锅越来越大的说明书。
+```text
+- 先给结论，再给关键依据
+- 提到文件时给出具体路径
+- 若未完成，明确说明阻塞原因
+- 若做了工具调用，结论必须基于调用结果
+```
 
-## 这页之后最适合接什么
+如果前端要吃结构化结果，还可以直接要求模型输出 JSON：
 
-这页讲的是“长期规则怎么写”，下一层自然就是“工具原则怎么落地”。
+```text
+输出必须符合以下 JSON 结构：
+{
+  "summary": string,
+  "actions": string[],
+  "risks": string[]
+}
+```
 
-所以它最适合和下一篇 `工具调用` 连着看：
+## 5. 工具原则写策略，不写 schema
 
-- `Agent 设计`
-  先定角色边界。
-- `System Prompt`
-  再定长期规则。
-- `工具调用`
-  最后把外部执行能力接上去。
+System Prompt 里最常见的过度设计，是把一大段工具参数说明也塞进去。
+
+更稳的做法是只写工具使用原则：
+
+```text
+- 时间敏感或外部事实相关的问题应优先查证
+- 有副作用的工具调用前应先确认必要性
+- 工具失败时应说明失败类型，并决定是否重试或回退
+```
+
+具体 schema 让工具层自己提供。
+
+## Prompt 最好不要手写死，应该让代码参与组装
+
+真正上线后，System Prompt 很少是一整段完全固定文本。  
+更常见的是：
+
+- 固定主模板
+- 再拼接当前 Agent 定义
+- 再拼接权限模式
+
+一个简单的写法可以是：
+
+```ts
+type PromptParts = {
+  role: string
+  priorities: string[]
+  boundaries: string[]
+  outputProtocol: string[]
+  toolPolicy: string[]
+}
+
+export function buildSystemPrompt(parts: PromptParts): string {
+  return [
+    '# Role',
+    parts.role,
+    '',
+    '# Priorities',
+    ...parts.priorities.map((item, index) => `${index + 1}. ${item}`),
+    '',
+    '# Boundaries',
+    ...parts.boundaries.map(item => `- ${item}`),
+    '',
+    '# Output Protocol',
+    ...parts.outputProtocol.map(item => `- ${item}`),
+    '',
+    '# Tool Policy',
+    ...parts.toolPolicy.map(item => `- ${item}`)
+  ].join('\n')
+}
+```
+
+这样做的好处很直接：
+
+- 变更可 diff
+- 不同 Agent 可复用结构
+- 可以按权限模式切换部分内容
+
+## 一个 Coding Agent 的实际 Prompt Builder
+
+```ts
+import type { AgentDefinition } from './agent-definition'
+
+export function buildCodingAgentSystemPrompt(definition: AgentDefinition, runtime: {
+  allowWrite: boolean
+  allowShell: boolean
+}) {
+  return buildSystemPrompt({
+    role: `You are ${definition.id}. Your job is to modify repository content only within the allowed task scope.`,
+    priorities: [
+      'avoid unsafe or unauthorized actions',
+      'produce correct modifications and verifiable results',
+      'follow user intent within the allowed scope'
+    ],
+    boundaries: [
+      'do not claim you inspected files you did not read',
+      runtime.allowWrite
+        ? 'writing is allowed only for files relevant to the task'
+        : 'do not modify files because current mode is read-only',
+      runtime.allowShell
+        ? 'shell commands are allowed only when they materially reduce uncertainty'
+        : 'do not invoke shell commands in current mode'
+    ],
+    outputProtocol: [
+      'start with the result',
+      'mention touched files when relevant',
+      'if blocked, state the exact blocker'
+    ],
+    toolPolicy: [
+      'prefer reading context before making changes',
+      'verify time-sensitive or external facts via tools',
+      'treat tool outputs as evidence for the final answer'
+    ]
+  })
+}
+```
+
+这个版本的价值在于：  
+它把 prompt 从“文案”变成了“可维护配置”。
+
+## Runtime 事实不要硬塞进 System Prompt 主模板
+
+很多 prompt 发散的根源是：  
+每次都把当前目录、当前文件、当前权限直接写进长期模板里。
+
+更稳的方式是另起一段 runtime context：
+
+```ts
+export function buildRuntimeContext(input: {
+  cwd: string
+  openFiles: string[]
+  selectedText?: string
+}) {
+  return [
+    '# Runtime Context',
+    `cwd: ${input.cwd}`,
+    `openFiles: ${input.openFiles.join(', ') || '(none)'}`,
+    input.selectedText ? `selectedText:\n${input.selectedText}` : ''
+  ].filter(Boolean).join('\n')
+}
+```
+
+然后在真正调模型时：
+
+```ts
+const messages = [
+  { role: 'system', content: buildCodingAgentSystemPrompt(definition, runtimePolicy) },
+  { role: 'system', content: buildRuntimeContext(runtimeFacts) },
+  { role: 'user', content: userInput }
+]
+```
+
+这种分法会比一大坨单文本稳定得多。
+
+## 最常见的 4 个 Prompt 工程错误
+
+### 1. 把短期任务写进 System Prompt
+
+例如：
+
+- “这次先看 `config.ts`”
+- “本轮只改文档”
+
+这些应该进 user/developer 层，不该进长期模板。
+
+### 2. 把所有工具细节塞进去
+
+Prompt 变长，但不会更稳，只会更吵。
+
+### 3. 每次出问题就补一句规则
+
+这会让 prompt 变成事故补丁堆。
+
+### 4. 不做版本管理
+
+Prompt 一旦是工程核心部件，就应该像代码一样：
+
+- 可 diff
+- 可 review
+- 可回滚
+
+## Prompt 最好配一层最小测试
+
+如果你是自己做 Agent，哪怕不做完整评测，也建议至少写几条 smoke case。
+
+例如：
+
+```ts
+const cases = [
+  {
+    name: 'should refuse write in read-only mode',
+    runtime: { allowWrite: false, allowShell: false },
+    user: 'Please edit README.md',
+    expectedRule: 'do not modify files because current mode is read-only'
+  }
+]
+```
+
+哪怕这层只是人工 review，也比纯靠线上踩坑强很多。
+
+## 一种比较推荐的落地顺序
+
+1. 先写 AgentDefinition
+2. 再写 PromptParts 结构
+3. 再写 `buildSystemPrompt()`
+4. 再写 `buildRuntimeContext()`
+5. 最后接模型调用
+
+这样后面换模型、换工具、换权限模式时，prompt 层才不会连着一起炸。
+
+## 最后记一句话
+
+**System Prompt 最好的状态，不是“足够长”，而是“长期规则足够稳定，运行时事实足够分层”。**
+
+只要你把它当成 runtime contract，而不是提示词作文，后面会清楚很多。

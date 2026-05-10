@@ -1,165 +1,417 @@
+---
+title: Agent 设计
+sidebarTitle: Agent 设计
+---
+
 # Agent 设计
 
-写 Agent 最容易踩的坑，不是 prompt 不够华丽，而是一开始就没有把角色边界定清楚。
+Agent 设计最容易犯的错，是一上来就写 prompt，而不是先设计 runtime 里的角色边界。
 
-很多失败案例看起来像“模型不聪明”，实际上是 Agent 被设计成了一个什么都想做的模糊角色。它既想回答问题，又想执行任务；既想给建议，又想直接改结果；既要快，又要准，还要少打扰用户。边界一糊，后面 prompt、工具、记忆、评测都会一起变形。
+如果一个 Agent 没有明确的职责、输入、输出和权限，它后面无论接：
 
-所以 Agent 设计的第一步，不是写提示词，而是先把这个角色定义成一个稳定的系统部件。
+- System Prompt
+- 工具
+- 记忆
+- MCP
+- SSE
 
-## 先定义职责，不要先定义语气
+都会慢慢失控。  
+所以这篇不讲“抽象人格”，而是直接讲：**一个可落地的 Agent，在工程里应该怎么设计。**
 
-很多人一上来会先写“你是一位专业、严谨、友善的 AI 助手”，这当然不是错，但它解决不了真正的问题。
+## 先说结论
 
-设计 Agent 时，更重要的是先回答下面四个问题：
+一个能长期维护的 Agent，通常至少要先定清这 6 件事：
 
-- 它到底负责什么
-- 它明确不负责什么
-- 它依赖什么输入才能工作
-- 它产出的结果要拿去做什么
+1. 它解决什么任务，不解决什么任务。
+2. 它拿到哪些输入，哪些输入必须靠工具补。
+3. 它最终输出什么结构，而不是“随便回一段话”。
+4. 它能调用哪些工具，哪些工具需要门控。
+5. 它在 runtime 里是单角色，还是编排器。
+6. 它失败时怎么停、怎么问、怎么回退。
 
-如果这四个问题没有定住，后面即使 prompt 很漂亮，Agent 也很容易在边界上漂移。
+一句话就是：
 
-举个例子：
+**Agent 不是一个 prompt 文件，而是一个带边界的工作单元。**
 
-- `代码评审 Agent`
-  负责识别风险、回归和测试缺口，不负责替用户重写整套方案。
-- `信息检索 Agent`
-  负责收集和归纳可信来源，不负责替用户做最终业务决策。
-- `执行 Agent`
-  负责改文件、跑命令、验证结果，不负责在需求含糊时自行扩需求。
+## 第一步：先定义这个 Agent 的“核心承诺”
 
-这才是 Agent 设计最关键的部分。语气是表层，职责才是骨架。
+我更推荐先写一行最短定义：
 
-## 一个 Agent 只做一类核心承诺
+```text
+这个 Agent 负责 ______ ，不负责 ______ 。
+```
 
-比较稳的做法，是让每个 Agent 只对外做一类核心承诺。
+例如：
 
-常见的核心承诺大概有三种：
+- 代码评审 Agent：负责识别风险、回归、测试缺口，不负责直接改代码。
+- Coding Agent：负责在给定范围内改代码并验证结果，不负责擅自扩需求。
+- 检索 Agent：负责查资料、比对来源、总结结论，不负责替用户做业务拍板。
 
-- `判断型`
-  比如评审、审计、诊断、归因。
-- `生成型`
-  比如写文案、生成方案、起草代码。
-- `执行型`
-  比如改代码、调工具、跑流程、提交结果。
+这个定义非常重要，因为它会直接决定：
 
-最危险的是把三种承诺混在一个 Agent 里，而且还不给优先级。
+- System Prompt 怎么写
+- 工具给到什么级别
+- 前端怎么展示它的行为
+- 评测标准怎么定
 
-例如一个 coding agent 同时被要求：
+## 第二步：不要只定义“会做什么”，还要定义“不会做什么”
 
-- 先判断需求是否合理
-- 再自己拆计划
-- 直接改代码
-- 自行决定要不要联网
-- 最后还要像 reviewer 一样审查自己
+这一步非常工程化，因为后面很多事故都来自“它以为自己可以做”。
 
-这种 Agent 不是不能做，但它更像一个编排系统，不像单个角色。设计上应该拆层，而不是把所有职责压给一个提示词。
+比较常见的“不负责”包括：
 
-## 好的 Agent 设计，首先要写清“拒绝什么”
+- 不做未经确认的高风险写操作
+- 不在上下文不足时给确定性结论
+- 不替用户决定高代价架构选择
+- 不对未读取过的文件做具体断言
+- 不在越权场景下调用生产工具
 
-一个成熟 Agent 的专业感，很大一部分来自它知道什么时候不做。
+如果这部分没写，后面的 guardrail 基本只能靠临时补丁救火。
 
-所以在定义职责时，最好同步写清楚“不负责的事”：
+## 第三步：把输入边界写成 runtime 真会收到的东西
 
-- 不做未经确认的高风险操作
-- 不在信息不足时强行给确定结论
-- 不对未访问过的文件做具体断言
-- 不替用户决定有明显业务代价的选择
+Agent 输入不是一句“用户问题”，而是一组运行时上下文。
 
-这不是在削弱能力，反而是在提升系统稳定性。因为只要边界明确，后面的工具调用、用户确认、回退策略都更容易建立。
-
-## 输入边界决定了 Agent 的上限
-
-Agent 不会凭空变强，它的工作能力受输入边界约束。
-
-设计时至少要区分三类输入：
+更稳的设计通常会把输入拆成 4 层：
 
 ### 1. 用户显式输入
 
-就是用户当前这轮说的话、上传的附件、选中的代码、指定的路径。
+例如：
 
-这类输入最直接，但往往不完整。
+- 当前问题
+- 上传附件
+- 选中的文本
+- 指定路径
 
-### 2. 系统注入上下文
+### 2. 宿主注入上下文
 
-包括：
+例如：
 
 - 当前工作目录
 - 打开的文件
-- 最近交互历史
+- 会话历史
 - 团队约定
-- 环境限制
+- 当前权限模式
 
-这部分往往才决定 Agent 能不能进入“真实工作状态”。
+### 3. 工具可补充上下文
 
-### 3. 工具可获取信息
+例如：
 
-比如搜索结果、文件读取、数据库查询、网页内容、构建日志。
+- 文件内容
+- Git diff
+- Web 搜索结果
+- 数据库查询结果
 
-很多 Agent 的差距，本质上不是推理差距，而是“它能不能拿到该拿的上下文”。
+### 4. Agent 内部状态
 
-所以设计一个 Agent 时，不能只写“它要做什么”，还要写“它凭什么能做成”。
+例如：
 
-## 输出边界决定协作成本
+- 当前第几轮 loop
+- 已调过哪些工具
+- 是否已经被用户拒绝过一次高风险操作
 
-Agent 输出不是写作文，它是系统接口的一部分。
+很多 Agent 之所以显得“笨”，不是模型不行，而是输入模型设计得像 demo。
 
-如果输出边界不清晰，协作成本会迅速上升。最常见的问题有：
+## 第四步：输出一定要先协议化
 
-- 该给结论时输出了大段分析
-- 该列风险时给成了泛泛建议
-- 该返回结构化结果时只写自然语言
-- 失败时不说明缺什么，而是反复绕圈
+工程上最怕的不是输出不好看，而是不可消费。
 
-设计输出时最好先想清楚：
+一个成熟 Agent 的输出最好先定义成结构，而不是靠 prompt 临场发挥。  
+例如可以先定义统一结果：
 
-- 结果是给人看，还是给程序继续消费
-- 是先结论后依据，还是先计划后执行
-- 失败时要不要给替代路径
-- 结果是否必须带证据、引用、文件路径或 diff
+```ts
+type AgentResult =
+  | {
+      type: 'final'
+      summary: string
+      details?: string
+      citations?: string[]
+    }
+  | {
+      type: 'need_user_input'
+      question: string
+      reason: string
+    }
+  | {
+      type: 'blocked'
+      reason: string
+      missing: string[]
+    }
+```
 
-一旦这些约束稳定下来，Agent 的行为才会越来越可预期。
+然后再决定最终渲染成：
 
-## 把 Agent 当成“可替换部件”来设计
+- 页面文本
+- CLI 输出
+- API JSON
 
-一个好用的 Agent，不应该只适合某一个 prompt，而应该像一个可替换部件。
+这会比“先让模型自由输出，再靠正则补救”稳很多。
 
-也就是说，换一个上游任务，换一点上下文，换一个模型，它仍然大致维持同样的职责与输出习惯。
+## 单 Agent 和编排型 Agent 要分开设计
 
-这就要求我们设计时优先沉淀这些稳定信息：
+很多人会把所有能力都塞给一个 Agent，但工程上其实至少有两类。
 
-- 角色定义
-- 权限边界
-- 输入来源
-- 输出协议
-- 升级路径
-- 失败策略
+### 单 Agent
 
-而不是只沉淀一句“你是一个很厉害的 Agent”。
+适合：
 
-## 一个实用的设计顺序
+- 代码评审
+- 文档总结
+- 简单查询
+- 单步写作
 
-如果以后要新建 Agent，我更推荐按下面这个顺序来：
+特点是：
 
-1. 先写目标：它解决什么问题。
-2. 再写边界：它不解决什么问题。
-3. 再写输入：它能看到什么、拿到什么。
-4. 再写输出：它要交付什么形态的结果。
-5. 最后才写 prompt 和工具细节。
+- 职责单一
+- 工具集合可控
+- loop 较短
 
-这个顺序的好处是，先把系统边界固定，再让提示词去服务边界，而不是让提示词替边界擦屁股。
+### 编排型 Agent
 
-## 我们后面写其他 Agent 笔记时，可以一直复用这个框架
+适合：
 
-后面的 `System Prompt`、`工具调用`、`上下文工程`，其实都应该建立在这一页上。
+- 多阶段研究
+- planner -> worker
+- 多工具串联
+- 多子任务汇总
 
-因为它们回答的是三个不同层的问题：
+特点是：
 
-- `Agent 设计`
-  这个角色应该成为什么。
-- `System Prompt`
-  这个角色应该怎么长期稳定地思考和表达。
-- `工具调用`
-  这个角色在需要外部能力时应该怎样安全执行。
+- 自己不一定产出最终业务结果
+- 更像 runtime orchestration layer
 
-如果第一层没有定义清楚，后面两层通常也会写歪。
+如果你现在做的是 coding agent、research agent、multi-step agent，它通常已经更接近编排器了，不该再用“一个人格提示词”去理解。
+
+## 一个更实际的工程拆法
+
+如果要自己实现，我建议至少拆成这 4 层：
+
+```text
+agent/
+├─ definition/
+│  └─ coding-agent.ts
+├─ runtime/
+│  ├─ agent-runner.ts
+│  ├─ tool-gate.ts
+│  └─ context-builder.ts
+├─ prompts/
+│  └─ coding-agent-system.ts
+└─ contracts/
+   └─ agent-result.ts
+```
+
+也就是说：
+
+- `definition`
+  放角色定义
+- `runtime`
+  放 loop 和策略
+- `prompts`
+  放系统级规则文本
+- `contracts`
+  放结构化输入输出
+
+不要把这些全塞进一个 `agent.ts` 文件里。
+
+## 一个最小 Agent 定义长什么样
+
+下面是一个很够用的定义层例子：
+
+```ts
+export type AgentDefinition = {
+  id: string
+  description: string
+  responsibilities: string[]
+  nonResponsibilities: string[]
+  visibleTools: string[]
+  maxTurns: number
+  outputMode: 'final_answer' | 'json' | 'stream'
+}
+
+export const codingAgent: AgentDefinition = {
+  id: 'coding-agent',
+  description: 'Modify code inside the current workspace and verify changes.',
+  responsibilities: [
+    'read repository context',
+    'edit code in allowed scope',
+    'run verification commands',
+    'explain key changes clearly'
+  ],
+  nonResponsibilities: [
+    'changing unrelated files',
+    'making product decisions without user confirmation',
+    'running destructive commands without approval'
+  ],
+  visibleTools: ['read_file', 'search_code', 'edit_file', 'run_command'],
+  maxTurns: 8,
+  outputMode: 'stream'
+}
+```
+
+这个定义的价值在于：
+
+- prompt 可读
+- runtime 可读
+- UI 可读
+- 评测也可读
+
+## Runtime 不要直接拿 prompt 跑，要先 build context
+
+一个比较稳的 `AgentRunner` 通常不会直接：
+
+```ts
+model.generate(userInput)
+```
+
+而是先 build 出完整上下文：
+
+```ts
+type AgentContext = {
+  userInput: string
+  workingDirectory?: string
+  openFiles: string[]
+  selectedText?: string
+  permissions: {
+    allowWrite: boolean
+    allowShell: boolean
+  }
+}
+
+function buildAgentContext(input: AgentContext) {
+  return {
+    userInput: input.userInput,
+    runtimeFacts: [
+      `cwd=${input.workingDirectory ?? ''}`,
+      `openFiles=${input.openFiles.join(',')}`,
+      `allowWrite=${input.permissions.allowWrite}`,
+      `allowShell=${input.permissions.allowShell}`
+    ]
+  }
+}
+```
+
+也就是说，Agent 设计的真正骨架通常是：
+
+- definition
+- context builder
+- prompt builder
+- tool loop
+
+而不是只有 prompt。
+
+## 一个最小可用的 Runner 骨架
+
+```ts
+export class AgentRunner {
+  constructor(
+    private readonly model: ModelGateway,
+    private readonly toolRegistry: ToolRegistry
+  ) {}
+
+  async run(definition: AgentDefinition, context: AgentContext): Promise<AgentResult> {
+    const built = buildAgentContext(context)
+    const tools = this.toolRegistry.pick(definition.visibleTools)
+    const messages: Array<{ role: string; content: string }> = [
+      { role: 'system', content: buildSystemPrompt(definition, built) },
+      { role: 'user', content: built.userInput }
+    ]
+
+    for (let turn = 0; turn < definition.maxTurns; turn += 1) {
+      const result = await this.model.generate({
+        messages,
+        tools
+      })
+
+      if (result.type === 'final') {
+        return {
+          type: 'final',
+          summary: result.text
+        }
+      }
+
+      const tool = this.toolRegistry.get(result.toolName)
+      const toolOutput = await tool.execute(result.arguments)
+
+      messages.push({
+        role: 'assistant',
+        content: `Calling tool ${result.toolName}`
+      })
+
+      messages.push({
+        role: 'tool',
+        content: JSON.stringify(toolOutput)
+      })
+    }
+
+    return {
+      type: 'blocked',
+      reason: 'agent exceeded max turns',
+      missing: []
+    }
+  }
+}
+```
+
+这才是一个“Agent 被做成系统部件”的最小形态。
+
+## 权限边界最好在设计时就入模
+
+不要等工具接上后才想安全问题。  
+更稳的做法是在 Agent definition 里就把权限作为显式设计项。
+
+例如：
+
+```ts
+type PermissionProfile = {
+  readOnly: boolean
+  requiresConfirmationForWrite: boolean
+  allowsNetwork: boolean
+}
+```
+
+这样你可以清楚区分：
+
+- 研究型 Agent
+- 写作型 Agent
+- 执行型 Agent
+- 高风险运维 Agent
+
+## 真正的失败策略也要先写
+
+一个可维护 Agent 一定要明确：
+
+- 上下文不够时怎么办
+- 工具报错时怎么办
+- 多轮循环卡住时怎么办
+- 用户拒绝高风险操作时怎么办
+
+一个最简单的策略对象可以长这样：
+
+```ts
+type FailurePolicy = {
+  askWhenUncertain: boolean
+  maxToolErrors: number
+  stopOnPermissionDenied: boolean
+}
+```
+
+如果这层不存在，后面的行为几乎都会变成“提示词临场发挥”。
+
+## 一种比较推荐的落地顺序
+
+如果你接下来真的要做一个 Agent，我建议这样做：
+
+1. 先写 `AgentDefinition`
+2. 再写 `AgentResult` 合同
+3. 再写 `ContextBuilder`
+4. 再写 `System Prompt Builder`
+5. 最后接工具 loop
+
+顺序不要反过来。  
+一上来先接工具、先写 prompt，最后通常会演变成“能跑，但说不清为什么这样跑”。
+
+## 最后记一句话
+
+**Agent 设计不是设计一句 prompt，而是先把这个角色做成 runtime 里可替换、可控、可观察的工作部件。**
+
+后面的 `System Prompt`、`工具调用`、`SSE`、`MCP`，都应该建立在这个骨架上。

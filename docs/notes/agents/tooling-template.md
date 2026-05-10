@@ -1,178 +1,452 @@
+---
+title: 工具调用
+sidebarTitle: 工具调用
+---
+
 # 工具调用
 
-Agent 从“会说话”变成“会做事”，关键就在工具调用。
+工具调用真正难的地方，不是 schema 怎么写，而是：
 
-但工具一接上，系统复杂度会立刻上升。因为从这一刻开始，模型输出不再只是文本，而可能变成真实动作：读文件、改代码、执行命令、查网页、写数据库、调用第三方服务。
+- 什么时候调
+- 调哪个
+- 调完结果怎么回填
+- 高风险调用怎么拦
 
-所以工具调用这件事，核心从来不是“怎么接上”，而是“怎么调得稳、调得准、调得安全”。
+如果这 4 件事没设计好，Agent 就算有一百个工具，也只是在一百条不稳定路径里随机试错。  
+所以这篇不只讲理念，而是直接讲：**工具层在工程上应该怎么实现。**
 
-## 工具不是能力展示，是执行边界
+## 先说结论
 
-很多人看工具，会把重点放在“模型终于能操作世界了”。这个理解没错，但还不够。
+一个可维护的工具系统，通常至少要补齐这 5 层：
 
-从系统设计角度看，每增加一个工具，实际上是在给 Agent 增加一条新的执行边界。
+1. Tool schema
+2. Tool registry
+3. Tool gate / permission policy
+4. Tool dispatcher
+5. Tool result normalization
+
+一句话就是：
+
+**工具系统不是把函数暴露给模型，而是给 Agent 增加一层可控执行平面。**
+
+## 先区分 3 种工具
+
+工程上很有必要把工具按风险和用途分层，而不是一视同仁。
+
+### 1. 只读工具
 
 例如：
 
 - `read_file`
-  允许它获取本地上下文。
-- `edit_file`
-  允许它改变工作结果。
-- `shell_command`
-  允许它触发外部副作用。
+- `search_code`
 - `web_search`
-  允许它引入外部事实。
+- `query_db`
 
-所以工具设计的第一原则不是炫技，而是最小必要权限。  
-能只读，就不要先给写。能局部写，就不要先给全局执行。
+特点：
 
-## 工具调用前，Agent 应该先做判断
+- 风险低
+- 主要作用是补上下文
 
-成熟 Agent 不是见工具就调，而是先判断这次有没有必要调。
+### 2. 本地写工具
 
-通常可以先问四个问题：
+例如：
 
-### 1. 这是不是一个必须查证的问题
+- `edit_file`
+- `write_file`
+- `create_branch`
 
-比如新闻、价格、版本、官方文档、线上状态，这些都具有时间敏感性。只靠记忆回答，风险很高。
+特点：
 
-### 2. 当前上下文够不够
+- 有副作用
+- 往往需要路径范围约束
 
-如果用户已经给了完整文件和明确范围，就不一定要再大范围搜索。过度调用工具只会拉高噪声。
+### 3. 外部副作用工具
 
-### 3. 这个工具有没有副作用
+例如：
 
-只读工具和写操作工具，风险完全不一样。副作用越强，前置判断和确认机制就应该越严格。
+- `send_slack_message`
+- `deploy_service`
+- `call_prod_api`
 
-### 4. 调完之后是否真的能缩小不确定性
+特点：
 
-有些调用只是“看起来很勤奋”，但并不能帮助决策。这样的调用应该减少。
+- 风险高
+- 通常需要确认、审计、甚至额外鉴权
 
-## 工具设计要关注四个维度
+如果这三类不分开，后面策略层几乎没法写。
 
-### 1. 输入是否足够明确
+## Tool 定义不要只是一段 JSON
 
-一个工具最怕的不是能力弱，而是参数空间太模糊。
+我更推荐先定义统一的工具合同：
 
-如果一个调用需要模型自己猜：
+```ts
+export type ToolDefinition<TArgs = unknown, TResult = unknown> = {
+  name: string
+  description: string
+  risk: 'read' | 'write' | 'external'
+  inputSchema: unknown
+  execute: (args: TArgs, context: ToolContext) => Promise<TResult>
+}
 
-- 路径
-- 查询关键词
-- 时间范围
-- 目标对象
+export type ToolContext = {
+  cwd?: string
+  userId?: string
+  sessionId: string
+  allowWrite: boolean
+  allowNetwork: boolean
+}
+```
 
-那误调用率就会上升。
+这个定义最重要的价值有两个：
 
-所以工具设计要尽量让参数语义清晰，必要时把复杂选择拆成多个更窄的工具。
+- 工具自己知道自己的风险级别
+- 执行时一定带 runtime context
 
-### 2. 输出是否便于消费
+## 一个最小只读工具长什么样
 
-模型不是工程师，它更容易消费结构清楚的结果。
+```ts
+import * as z from 'zod'
 
-相比一大段混杂文本，更好的工具输出通常是：
+export const readFileTool: ToolDefinition<{ path: string }, { content: string }> = {
+  name: 'read_file',
+  description: 'Read a file from the current workspace.',
+  risk: 'read',
+  inputSchema: z.object({
+    path: z.string().min(1)
+  }),
+  async execute(args, context) {
+    const fullPath = resolvePath(context.cwd, args.path)
+    const content = await fs.promises.readFile(fullPath, 'utf-8')
+    return { content }
+  }
+}
+```
 
-- 明确字段
-- 固定结构
-- 错误可识别
-- 空结果可区分
+注意这里不是直接暴露 `fs.readFile`，而是先通过工具合同包了一层。
 
-这会直接影响 Agent 后续能不能稳定推理。
+## 一个写工具一定要先做路径约束
 
-### 3. 错误是否可恢复
+```ts
+export const writeFileTool: ToolDefinition<
+  { path: string; content: string },
+  { path: string; bytes: number }
+> = {
+  name: 'write_file',
+  description: 'Write content to a file inside the workspace.',
+  risk: 'write',
+  inputSchema: z.object({
+    path: z.string().min(1),
+    content: z.string()
+  }),
+  async execute(args, context) {
+    if (!context.allowWrite) {
+      throw new Error('write is not allowed in current mode')
+    }
 
-好工具不只是成功路径清楚，失败路径也要清楚。
+    const fullPath = resolvePath(context.cwd, args.path)
+    ensureInsideWorkspace(context.cwd, fullPath)
 
-至少要区分：
+    await fs.promises.writeFile(fullPath, args.content, 'utf-8')
+    return { path: args.path, bytes: Buffer.byteLength(args.content, 'utf-8') }
+  }
+}
+```
 
-- 参数错误
-- 权限错误
-- 超时
-- 空结果
-- 系统异常
+真正关键的是这两步：
 
-如果所有失败都只返回一句“调用失败”，Agent 很难制定正确回退策略。
+- `allowWrite`
+- `ensureInsideWorkspace()`
 
-### 4. 副作用是否可控
+很多工具事故都不是 schema 错，而是边界没拦。
 
-读操作、写操作、外部请求、删除、部署，这些副作用等级完全不同。
+## Tool Registry 不要省
 
-工具层最好能天然表达这种差异，而不是把所有调用都当成一样的 JSON 请求。
+一开始很多人会直接：
 
-## 真正难的是调用策略，不是调用格式
+```ts
+const tools = [readFileTool, writeFileTool]
+```
 
-很多教程会花很多时间讲工具调用 JSON 怎么写，但那只是表层。
+demo 可以，但工程上最好还是有 registry：
 
-真正拉开质量差距的是调用策略：
+```ts
+export class ToolRegistry {
+  private readonly tools = new Map<string, ToolDefinition>()
 
-- 什么时候该自己先推理
-- 什么时候该先查证
-- 什么时候应该并行调多个工具
-- 什么时候要停下来等用户确认
-- 什么时候要在失败后换路再试
+  register(tool: ToolDefinition) {
+    this.tools.set(tool.name, tool)
+  }
 
-这部分通常比 schema 本身重要得多。
+  get(name: string) {
+    const tool = this.tools.get(name)
+    if (!tool) throw new Error(`unknown tool: ${name}`)
+    return tool
+  }
 
-## 一个稳的工具链，通常会有这些约束
+  pick(names: string[]) {
+    return names.map(name => this.get(name))
+  }
 
-### 调用理由要能说清
+  list() {
+    return [...this.tools.values()]
+  }
+}
+```
 
-Agent 不应该无缘无故调工具。每次调用前，最好都能说清楚“为什么要调它”。
+这个类后面会非常有用，因为：
 
-这件事的价值不只在可解释性，也在于强迫系统过滤掉无效调用。
+- AgentDefinition 可以按名字挑工具
+- UI 可以列出当前可见工具
+- 策略层可以统一做门控
 
-### 重要工具要有前置检查
+## 模型真正看到的，不应该是 execute 函数本身
 
-比如执行命令前先看路径，写文件前先确认目标文件，联网搜索前先判断是不是时间敏感信息。
+模型只需要看到：
 
-这些检查看起来啰嗦，但它们能显著减少低级事故。
+- name
+- description
+- inputSchema
 
-### 副作用操作要可中断
+所以通常还要做一层映射：
 
-如果一个工具可能造成改动、扣费、删除、发消息、上线，那它最好具备“确认”“中止”“回退”这些机制。
+```ts
+function toModelTool(tool: ToolDefinition) {
+  return {
+    name: tool.name,
+    description: tool.description,
+    inputSchema: tool.inputSchema
+  }
+}
+```
 
-### 调用结果要进入证据链
+这个层次不要跳过。  
+因为 execute 是 runtime 行为，schema 是模型可见合同，它们不是一回事。
 
-工具结果不只是给模型看，还应该成为最终输出的依据。  
-否则用户很难判断结论是模型猜的，还是确实查到的。
+## 真正的关键层：Tool Gate
 
-## 工具越多，不代表 Agent 越强
+这层决定：
 
-这是很容易误判的一点。
+- 能不能调
+- 要不要确认
+- 需不需要拒绝
 
-工具越多，理论能力越强，但同时也意味着：
+一个最小版本可以先这样：
 
-- 决策分支更多
-- 错误面更大
-- 安全风险更高
-- 调试成本更高
+```ts
+export type ToolDecision =
+  | { action: 'allow' }
+  | { action: 'deny'; reason: string }
+  | { action: 'confirm'; reason: string }
 
-所以很多成熟系统会非常克制地控制工具集合，优先把少量高价值工具打磨稳定，而不是无节制往上挂能力。
+export function checkToolPermission(
+  tool: ToolDefinition,
+  args: unknown,
+  context: ToolContext
+): ToolDecision {
+  if (tool.risk === 'read') {
+    return { action: 'allow' }
+  }
 
-## 从“能调用”到“调用得像产品”
+  if (tool.risk === 'write' && !context.allowWrite) {
+    return { action: 'deny', reason: 'current mode is read-only' }
+  }
 
-如果只是做 demo，能调通就够了。  
-但如果想把 Agent 做成产品，工具层至少要回答这些问题：
+  if (tool.risk === 'external' && !context.allowNetwork) {
+    return { action: 'deny', reason: 'network access is disabled' }
+  }
 
-- 哪些工具默认可用
-- 哪些工具需要确认
-- 哪些工具需要鉴权
-- 哪些工具结果需要缓存
-- 哪些失败需要自动重试
-- 哪些调用应该写入审计日志
+  if (tool.risk === 'external') {
+    return { action: 'confirm', reason: 'external side effect requires user confirmation' }
+  }
 
-这已经不是 prompt 工程，而是工程系统设计。
+  return { action: 'allow' }
+}
+```
 
-## 我们后面做 Agent 时，可以这样落地
+这层才是真正把“工具很多”变成“工具可控”的关键。
 
-如果以后给某个 Agent 真正接工具，我建议至少补齐这四样：
+## Dispatcher 应该统一处理校验、门控、执行、归一化
 
-1. 工具职责
-   这个工具解决什么问题，不解决什么问题。
-2. 调用条件
-   什么情况下调，什么情况下不调。
-3. 风险等级
-   只读、写入、高风险操作分别怎么处理。
-4. 失败回退
-   超时、空结果、权限不足、结果冲突时怎么兜底。
+不要在 Agent loop 里自己一会儿 parse schema，一会儿执行工具。  
+更稳的方式是让 Dispatcher 做统一入口：
 
-当这四样写清楚以后，Agent 才不是“能调工具”，而是“会工作”。
+```ts
+export class ToolDispatcher {
+  constructor(private readonly registry: ToolRegistry) {}
+
+  async dispatch(name: string, args: unknown, context: ToolContext) {
+    const tool = this.registry.get(name)
+
+    const parsedArgs = zodParse(tool.inputSchema, args)
+    const decision = checkToolPermission(tool, parsedArgs, context)
+
+    if (decision.action === 'deny') {
+      return { isError: true, errorType: 'permission_denied', message: decision.reason }
+    }
+
+    if (decision.action === 'confirm') {
+      return { isError: true, errorType: 'needs_confirmation', message: decision.reason }
+    }
+
+    try {
+      const result = await tool.execute(parsedArgs, context)
+      return { isError: false, result }
+    } catch (error) {
+      return {
+        isError: true,
+        errorType: 'tool_execution_failed',
+        message: error instanceof Error ? error.message : String(error)
+      }
+    }
+  }
+}
+```
+
+这样你的 Agent loop 会简化很多。
+
+## Tool result 一定要归一化
+
+不要让模型直接吃各种工具的原始返回。  
+更稳的做法是先统一格式：
+
+```ts
+type NormalizedToolResult = {
+  ok: boolean
+  summary: string
+  data?: unknown
+  errorType?: string
+}
+
+function normalizeToolResult(raw: any): NormalizedToolResult {
+  if (raw.isError) {
+    return {
+      ok: false,
+      summary: raw.message,
+      errorType: raw.errorType
+    }
+  }
+
+  return {
+    ok: true,
+    summary: JSON.stringify(raw.result).slice(0, 1000),
+    data: raw.result
+  }
+}
+```
+
+这层非常重要，因为它决定了模型看到的是：
+
+- 一段混乱原始输出
+- 还是一份稳定可推理的工具结果
+
+## Agent Loop 接工具时应该怎么写
+
+一个最小可用版本可以这样：
+
+```ts
+async function runToolAwareAgent(params: {
+  model: ModelGateway
+  dispatcher: ToolDispatcher
+  tools: ToolDefinition[]
+  context: ToolContext
+  userInput: string
+}) {
+  const messages: Array<{ role: string; content: string }> = [
+    { role: 'user', content: params.userInput }
+  ]
+
+  for (let turn = 0; turn < 8; turn += 1) {
+    const response = await params.model.generate({
+      messages,
+      tools: params.tools.map(toModelTool)
+    })
+
+    if (response.type === 'final') {
+      return response.text
+    }
+
+    const rawToolResult = await params.dispatcher.dispatch(
+      response.toolName,
+      response.arguments,
+      params.context
+    )
+
+    const toolResult = normalizeToolResult(rawToolResult)
+
+    messages.push({
+      role: 'assistant',
+      content: `Tool call requested: ${response.toolName}`
+    })
+
+    messages.push({
+      role: 'tool',
+      content: JSON.stringify(toolResult)
+    })
+  }
+
+  throw new Error('tool loop exceeded max turns')
+}
+```
+
+这里真正拉开质量差距的地方不是“调用成功”，而是：
+
+- turn 上限
+- dispatcher 统一行为
+- result normalization
+
+## 工具调用日志最好一开始就记
+
+后面你几乎一定会需要：
+
+- 前端显示 tool timeline
+- 线上排查“为什么调了这个工具”
+- 评估哪个工具最常失败
+
+所以最好一开始就定义事件：
+
+```ts
+type ToolEvent =
+  | { type: 'tool_start'; toolName: string; args: unknown }
+  | { type: 'tool_success'; toolName: string; summary: string }
+  | { type: 'tool_error'; toolName: string; errorType: string; message: string }
+```
+
+然后 Dispatcher 每次 dispatch 时都能发事件。  
+这样后面接 SSE、WebSocket、数据库日志都会很自然。
+
+## 不要让模型直接决定“所有副作用都执行”
+
+一个成熟系统通常会把高风险调用拆成两段：
+
+1. 模型提出调用建议
+2. Host / 用户确认后才真正执行
+
+例如：
+
+```ts
+if (toolResult.errorType === 'needs_confirmation') {
+  return {
+    type: 'need_user_input',
+    question: `是否允许执行工具 ${response.toolName}？`,
+    reason: toolResult.summary
+  }
+}
+```
+
+这层如果没有，后面工具一多，风险就会上升得很快。
+
+## 一种比较推荐的工程落地顺序
+
+1. 先写 `ToolDefinition`
+2. 再写 `ToolRegistry`
+3. 再写 `ToolGate`
+4. 再写 `ToolDispatcher`
+5. 最后再把它接进 Agent loop
+
+不要一开始就把工具耦进模型 SDK 调用里。
+
+## 最后记一句话
+
+**工程里的工具调用系统，不是“模型会调函数”这么简单，而是把“可调用能力”变成一层带权限、带日志、带回退、带结果归一化的执行平面。**
+
+做到这一步，Agent 才不是“能调工具”，而是“会工作”。
