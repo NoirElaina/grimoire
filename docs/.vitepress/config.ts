@@ -208,6 +208,31 @@ export default defineConfig({
               'notes/java-backend/mybatis-plus.md',
               '/notes/java-backend/mybatis-plus',
               'MyBatis-Plus'
+            ),
+            createDocItem(
+              'notes/java-backend/openfeign.md',
+              '/notes/java-backend/openfeign',
+              'OpenFeign'
+            )
+          ]
+        }
+      ],
+      '/notes/redis/': [
+        {
+          text: '笔记',
+          collapsed: true,
+          items: [
+            { text: '笔记首页', link: '/notes/' }
+          ]
+        },
+        {
+          text: 'Redis',
+          items: [
+            createDocItem('notes/redis/index.md', '/notes/redis/', '专题首页'),
+            createDocItem(
+              'notes/redis/cache-design.md',
+              '/notes/redis/cache-design',
+              '01 缓存设计'
             )
           ]
         }
@@ -244,6 +269,7 @@ export default defineConfig({
           items: [
             { text: 'Agents', link: '/notes/agents/' },
             { text: 'Java 后端', link: '/notes/java-backend/' },
+            { text: 'Redis', link: '/notes/redis/' },
             { text: 'RabbitMQ', link: '/notes/rabbitmq/' }
           ]
         }
