@@ -30,6 +30,8 @@ export default defineConfig({
     nav: [
       { text: '首页', link: '/' },
       { text: '进入笔记', link: '/notes/' },
+      { text: '博客', link: 'https://noirelaina.github.io/ashenwitch/' },
+      { text: 'GitHub', link: 'https://github.com/NoirElaina' },
       { text: '关于', link: '/about' }
     ],
 
