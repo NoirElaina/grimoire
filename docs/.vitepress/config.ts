@@ -1,9 +1,15 @@
 import { defineConfig } from 'vitepress'
 
+const repoName = process.env.GITHUB_REPOSITORY?.split('/')[1]
+const isUserSite = repoName?.toLowerCase() === 'noirelaina.github.io'
+const base =
+  process.env.GITHUB_ACTIONS && repoName && !isUserSite ? `/${repoName}/` : '/'
+
 // https://vitepress.dev/reference/site-config
 export default defineConfig({
   title: "Grimoire",
   description: "灰之魔女的魔导书",
+  base,
   themeConfig: {
     // https://vitepress.dev/reference/default-theme-config
     search: {
