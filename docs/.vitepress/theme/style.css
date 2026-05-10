@@ -1,0 +1,191 @@
+:root {
+  --vp-font-family-base: "IBM Plex Sans", "Noto Sans SC", "Segoe UI", sans-serif;
+  --vp-font-family-mono: "JetBrains Mono", "Cascadia Code", monospace;
+
+  --vp-c-brand-1: #2c71ea;
+  --vp-c-brand-2: #4b8fff;
+  --vp-c-brand-3: #77b0ff;
+  --vp-c-brand-soft: rgba(101, 168, 255, 0.18);
+
+  --vp-home-hero-name-color: transparent;
+  --vp-home-hero-name-background: linear-gradient(
+    135deg,
+    #85cbff 0%,
+    #3d8cff 45%,
+    #1f4270 100%
+  );
+  --vp-home-hero-image-background-image:
+    radial-gradient(circle at 28% 30%, rgba(190, 230, 255, 0.96), transparent 32%),
+    radial-gradient(circle at 72% 34%, rgba(104, 175, 255, 0.72), transparent 28%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.94), rgba(214, 234, 255, 0.74));
+  --vp-home-hero-image-filter: blur(56px);
+
+  --vp-button-brand-border: transparent;
+  --vp-button-brand-text: #ffffff;
+  --vp-button-brand-bg: linear-gradient(135deg, #5aa4ff, #2c71ea);
+  --vp-button-brand-hover-border: transparent;
+  --vp-button-brand-hover-text: #ffffff;
+  --vp-button-brand-hover-bg: linear-gradient(135deg, #7bb7ff, #4b8fff);
+  --vp-button-brand-active-border: transparent;
+  --vp-button-brand-active-text: #ffffff;
+  --vp-button-brand-active-bg: #2c71ea;
+
+  --vp-custom-block-tip-border: rgba(101, 168, 255, 0.24);
+  --vp-custom-block-tip-text: #23456f;
+  --vp-custom-block-tip-bg: rgba(230, 241, 255, 0.82);
+  --vp-custom-block-tip-code-bg: rgba(230, 241, 255, 0.82);
+}
+
+body {
+  background:
+    radial-gradient(circle at top left, rgba(208, 235, 255, 0.96), transparent 28%),
+    radial-gradient(circle at top right, rgba(166, 211, 255, 0.56), transparent 24%),
+    linear-gradient(180deg, #f8fbff 0%, #eef5ff 48%, #f7fbff 100%);
+  color: #18324d;
+}
+
+.Layout {
+  background: transparent;
+}
+
+.VPNav {
+  background: rgba(245, 250, 255, 0.62) !important;
+  border-bottom: 1px solid rgba(118, 178, 245, 0.16);
+  backdrop-filter: blur(18px);
+}
+
+.VPNavBar.has-sidebar .content-body,
+.VPNavBar .content-body {
+  background: transparent;
+}
+
+.VPNavBarMenuLink {
+  color: #4d6481;
+}
+
+.VPNavBarMenuLink:hover,
+.VPNavBarMenuLink.active {
+  color: #2159b9;
+}
+
+.VPContent.is-home {
+  height: calc(100vh - var(--vp-nav-height));
+  min-height: calc(100vh - var(--vp-nav-height));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  overflow: hidden;
+}
+
+.VPHome {
+  width: 100%;
+}
+
+.VPHomeHero {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.VPHomeHero .container {
+  min-height: calc(100vh - var(--vp-nav-height) - 2rem);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.VPHomeHero .main {
+  width: min(920px, calc(100vw - 3rem));
+  min-height: min(420px, 62vh);
+  padding: 4.5rem 3rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  border-radius: 34px;
+  background: rgba(255, 255, 255, 0.42);
+  border: 1px solid rgba(118, 178, 245, 0.18);
+  backdrop-filter: blur(24px);
+  box-shadow: 0 24px 80px rgba(92, 146, 214, 0.16);
+}
+
+.VPHomeHero .name {
+  justify-content: center;
+  letter-spacing: -0.03em;
+  margin: 0 auto 0.4rem;
+}
+
+.VPHomeHero .text {
+  max-width: none;
+  letter-spacing: -0.05em;
+  margin: 0 auto 1rem;
+}
+
+.VPHomeHero .tagline {
+  max-width: 26rem;
+  margin-left: auto;
+  margin-right: auto;
+  margin-bottom: 2rem;
+  color: #587293;
+}
+
+.VPHomeHero .actions {
+  justify-content: center;
+  margin: 0;
+}
+
+.VPButton.medium {
+  min-width: 9.5rem;
+  border-radius: 999px;
+  box-shadow: 0 14px 40px rgba(74, 143, 255, 0.22);
+}
+
+.VPButton.brand {
+  color: #ffffff !important;
+  background: linear-gradient(135deg, #5aa4ff, #2c71ea) !important;
+  border: 0 !important;
+}
+
+.VPButton.brand:hover {
+  color: #ffffff !important;
+  background: linear-gradient(135deg, #7bb7ff, #4b8fff) !important;
+}
+
+.VPSidebar {
+  background: rgba(248, 252, 255, 0.72) !important;
+  border-right: 1px solid rgba(118, 178, 245, 0.14);
+  backdrop-filter: blur(16px);
+}
+
+.vp-doc h1,
+.vp-doc h2,
+.vp-doc h3 {
+  color: #102a46;
+  letter-spacing: -0.02em;
+}
+
+.vp-doc blockquote,
+.vp-doc .custom-block,
+.vp-doc div[class*='language-'] {
+  border: 1px solid rgba(118, 178, 245, 0.16);
+  box-shadow: 0 12px 36px rgba(92, 146, 214, 0.08);
+}
+
+@media (max-width: 960px) {
+  .VPContent.is-home {
+    height: auto;
+    min-height: calc(100vh - var(--vp-nav-height));
+    overflow: visible;
+  }
+
+  .VPHomeHero .container {
+    min-height: calc(100vh - var(--vp-nav-height) - 1rem);
+  }
+
+  .VPHomeHero .main {
+    width: calc(100vw - 1.5rem);
+    min-height: min(380px, 58vh);
+    padding: 3rem 1.5rem;
+  }
+}
