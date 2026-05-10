@@ -113,6 +113,16 @@ export default defineConfig({
               'notes/agents/tooling-template.md',
               '/notes/agents/tooling-template',
               '工具调用'
+            ),
+            createDocItem(
+              'notes/agents/sse-streaming.md',
+              '/notes/agents/sse-streaming',
+              'SSE 流式响应'
+            ),
+            createDocItem(
+              'notes/agents/mcp-protocol.md',
+              '/notes/agents/mcp-protocol',
+              'MCP 协议'
             )
           ]
         },
@@ -213,6 +223,16 @@ export default defineConfig({
               'notes/java-backend/openfeign.md',
               '/notes/java-backend/openfeign',
               'OpenFeign'
+            ),
+            createDocItem(
+              'notes/java-backend/nacos.md',
+              '/notes/java-backend/nacos',
+              'Nacos'
+            ),
+            createDocItem(
+              'notes/java-backend/sentinel.md',
+              '/notes/java-backend/sentinel',
+              'Sentinel'
             )
           ]
         }

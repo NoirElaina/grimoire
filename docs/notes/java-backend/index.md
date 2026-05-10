@@ -22,6 +22,8 @@ sidebarTitle: 专题首页
 - [JWT 鉴权设计笔记](/notes/java-backend/jwt-auth)
 - [MyBatis-Plus 使用笔记](/notes/java-backend/mybatis-plus)
 - [OpenFeign 使用笔记](/notes/java-backend/openfeign)
+- [Nacos 使用笔记](/notes/java-backend/nacos)
+- [Sentinel 使用笔记](/notes/java-backend/sentinel)
 
 ## 后面可以继续补
 

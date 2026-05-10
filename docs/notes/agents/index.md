@@ -20,6 +20,11 @@ sidebarTitle: 专题首页
 - [System Prompt](/notes/agents/system-prompt-template)
 - [工具调用](/notes/agents/tooling-template)
 
+## 协议与运行时
+
+- [SSE 流式响应](/notes/agents/sse-streaming)
+- [MCP 协议](/notes/agents/mcp-protocol)
+
 ## 源码解析
 
 - [Claude 源码解析](/notes/agents/claude-code-analysis/)
