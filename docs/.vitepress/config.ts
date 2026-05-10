@@ -1,9 +1,13 @@
-import { defineConfig } from 'vitepress'
+import { readFileSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { defineConfig, type DefaultTheme } from 'vitepress'
 
 const repoName = process.env.GITHUB_REPOSITORY?.split('/')[1]
 const isUserSite = repoName?.toLowerCase() === 'noirelaina.github.io'
 const base =
   process.env.GITHUB_ACTIONS && repoName && !isUserSite ? `/${repoName}/` : '/'
+const docsRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
 const overviewItems = [
   { text: '笔记首页', link: '/notes/' },
@@ -11,6 +15,39 @@ const overviewItems = [
   { text: '写作与发布', link: '/markdown-examples' },
   { text: '技术摘记', link: '/api-examples' }
 ]
+
+function normalizeFrontmatterValue(value?: string) {
+  return value?.trim().replace(/^['"](.*)['"]$/, '$1')
+}
+
+function resolveSidebarText(docPath: string, fallbackText: string) {
+  try {
+    const source = readFileSync(resolve(docsRoot, docPath), 'utf8')
+    const frontmatterBlock = source.match(/^---\r?\n([\s\S]*?)\r?\n---/)?.[1]
+    const sidebarTitle = normalizeFrontmatterValue(
+      frontmatterBlock?.match(/^sidebarTitle:\s*(.+)$/m)?.[1]
+    )
+    const title = normalizeFrontmatterValue(
+      frontmatterBlock?.match(/^title:\s*(.+)$/m)?.[1]
+    )
+    const h1 = source.match(/^#\s+(.+)$/m)?.[1]?.trim()
+
+    return sidebarTitle || title || h1 || fallbackText
+  } catch {
+    return fallbackText
+  }
+}
+
+function createDocItem(
+  docPath: string,
+  link: string,
+  fallbackText: string
+): DefaultTheme.SidebarItem {
+  return {
+    text: resolveSidebarText(docPath, fallbackText),
+    link
+  }
+}
 
 // https://vitepress.dev/reference/site-config
 export default defineConfig({
@@ -61,17 +98,37 @@ export default defineConfig({
         {
           text: 'Agents',
           items: [
-            { text: '专题首页', link: '/notes/agents/' },
-            { text: 'Agent 设计', link: '/notes/agents/agent-design-template' },
-            { text: 'System Prompt', link: '/notes/agents/system-prompt-template' },
-            { text: '工具调用', link: '/notes/agents/tooling-template' }
+            createDocItem('notes/agents/index.md', '/notes/agents/', '专题首页'),
+            createDocItem(
+              'notes/agents/agent-design-template.md',
+              '/notes/agents/agent-design-template',
+              'Agent 设计'
+            ),
+            createDocItem(
+              'notes/agents/system-prompt-template.md',
+              '/notes/agents/system-prompt-template',
+              'System Prompt'
+            ),
+            createDocItem(
+              'notes/agents/tooling-template.md',
+              '/notes/agents/tooling-template',
+              '工具调用'
+            )
           ]
         },
         {
           text: 'Claude 源码解析',
           items: [
-            { text: '专题说明', link: '/notes/agents/claude-code-analysis/' },
-            { text: '01 Claude Code 泄露事件与架构启示', link: '/notes/agents/claude-code-analysis/first-look' }
+            createDocItem(
+              'notes/agents/claude-code-analysis/index.md',
+              '/notes/agents/claude-code-analysis/',
+              '专题说明'
+            ),
+            createDocItem(
+              'notes/agents/claude-code-analysis/first-look.md',
+              '/notes/agents/claude-code-analysis/first-look',
+              '01 Claude Code 泄露事件与架构启示'
+            )
           ]
         }
       ],
@@ -86,10 +143,22 @@ export default defineConfig({
         {
           text: 'Java 后端',
           items: [
-            { text: '专题首页', link: '/notes/java-backend/' },
-            { text: 'Spring Boot 项目模板', link: '/notes/java-backend/spring-boot-template' },
-            { text: '接口设计模板', link: '/notes/java-backend/api-design-template' },
-            { text: '问题排查模板', link: '/notes/java-backend/troubleshooting-template' }
+            createDocItem('notes/java-backend/index.md', '/notes/java-backend/', '专题首页'),
+            createDocItem(
+              'notes/java-backend/spring-boot-template.md',
+              '/notes/java-backend/spring-boot-template',
+              'Spring Boot 项目模板'
+            ),
+            createDocItem(
+              'notes/java-backend/api-design-template.md',
+              '/notes/java-backend/api-design-template',
+              '接口设计模板'
+            ),
+            createDocItem(
+              'notes/java-backend/troubleshooting-template.md',
+              '/notes/java-backend/troubleshooting-template',
+              '问题排查模板'
+            )
           ]
         }
       ],

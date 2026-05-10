@@ -1,3 +1,8 @@
+---
+title: Claude 源码解析
+sidebarTitle: 专题说明
+---
+
 # Claude 源码解析
 
 这个分支记录对 `Claude Code` 泄露事件的高层拆解。
