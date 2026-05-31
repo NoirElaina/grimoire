@@ -5,414 +5,729 @@ sidebarTitle: 01 消息模型
 
 # RabbitMQ 消息模型与核心概念
 
-RabbitMQ 最容易学歪的一点，是很多人一上来就记：
+这篇只解决一个问题：
 
-- 交换机
-- 队列
-- 路由键
+**一条消息从生产者发出以后，到底靠什么规则进入某个队列，又怎么被消费者拿走。**
 
-但没有先建立整体模型，结果后面一写业务就会混乱：  
-到底消息发给谁，为什么进了这个队列，为什么有的消息没被消费，为什么改了路由键后整条链路都坏了。
-
-所以这篇不先讲 Spring Boot API，而是先把 RabbitMQ 最核心的那套消息流转关系讲清楚。
-
-## 先说结论
-
-RabbitMQ 的最小心智模型应该是：
-
-1. **生产者不直接把消息发给队列，而是发给交换机。**
-2. **交换机不存消息，它只负责路由。**
-3. **真正存消息的是队列。**
-4. **绑定决定“某个交换机产生的哪些消息会进入某个队列”。**
-5. **消费者永远是从队列消费，不是从交换机消费。**
-
-如果先把这五句记住，后面很多概念都会顺。
-
-## 一条消息到底怎么走
-
-最基础的流转链路是：
+先不要背 API。RabbitMQ 的核心链路可以压成这一行：
 
 ```text
-Producer -> Exchange -> Queue -> Consumer
+basic.publish(exchange, routingKey, properties, body)
+  -> Exchange
+  -> Binding
+  -> Queue
+  -> basic.deliver
+  -> Consumer
+  -> ack / nack
 ```
 
-按责任拆开看：
+## 先给结论
 
-### Producer
+| 对象 | 负责什么 | 不负责什么 |
+| --- | --- | --- |
+| Producer | 发布消息到交换机 | 不直接决定消息最终被哪个消费者处理 |
+| Exchange | 按规则路由消息 | 不长期存消息 |
+| Binding | 连接交换机和队列 | 不消费消息 |
+| Queue | 存消息、投递给消费者 | 不决定消息应该路由到哪里 |
+| Consumer | 处理消息并确认 | 不从交换机消费 |
 
-负责发送消息。  
-它最关心的是：
+最容易记错的是这两句：
 
-- 发到哪个交换机
-- 用什么路由键
-- 消息体是什么
+- 生产者通常发给 `exchange`，不是直接发给 `queue`。
+- 一个队列多个消费者是竞争消费，不是广播。
 
-### Exchange
+## 发布消息时到底发了什么
 
-负责路由。  
-它根据：
+生产者发布消息，本质上是发一个 `basic.publish`：
 
-- 交换机类型
-- 绑定规则
-- 路由键
+```text
+exchange = "order.event.exchange"
+routingKey = "order.paid"
+properties = {
+  contentType: "application/json",
+  deliveryMode: 2,
+  messageId: "msg_001",
+  correlationId: "trace_001",
+  headers: {
+    source: "order-service"
+  }
+}
+body = "{\"orderId\":1001,\"amount\":99.00}"
+```
 
-决定消息应该去哪几个队列。
+这几个字段要分清：
 
-### Queue
+| 字段 | 作用 |
+| --- | --- |
+| `exchange` | 发到哪个交换机 |
+| `routingKey` | 给交换机用的路由标签 |
+| `properties` | 消息元信息，例如持久化、追踪 ID、content type |
+| `body` | 真正业务内容 |
 
-负责存储消息。  
-消息一旦进入队列，就会等待消费者处理。
+生产者最核心的职责不是“知道队列名”，而是把业务事件发布到稳定的交换机和路由键上。
 
-### Consumer
+## 消息流转状态
 
-负责从队列取消息并执行业务逻辑。
+一条消息通常会经历这些状态：
 
-## 为什么生产者不直接发队列
+```text
+published
+  -> routed
+  -> ready in queue
+  -> delivered to consumer
+  -> unacked
+  -> acked / nacked / rejected
+```
 
-这是 RabbitMQ 设计里很关键的一点。
+队列里常见两个数量：
 
-如果生产者直接绑定队列，会有几个问题：
+| 状态 | 含义 |
+| --- | --- |
+| `ready` | 还没投递给消费者的消息 |
+| `unacked` | 已投递给消费者，但还没收到确认的消息 |
 
-1. 生产者必须知道每个消费方的具体队列名。
-2. 一旦新增消费方，生产者可能也要改。
-3. 同一条消息要发给多个消费方会很难扩展。
+排查堆积时先看：
 
-引入交换机后，生产者只需要关注：
+- `ready` 很高：消费者处理不过来，或者没有消费者。
+- `unacked` 很高：消费者拿到了消息但没 ack，可能卡住、超时、线程池满。
 
-- 发给哪个交换机
-- 带什么路由键
+## Exchange：只做路由
 
-至于后面有几个队列、哪些队列接这类消息，由交换机和绑定关系来决定。
+交换机声明时最重要的是：
 
-这也是 RabbitMQ 最核心的解耦点。
+```text
+name = "order.event.exchange"
+type = "topic"
+durable = true
+autoDelete = false
+arguments = {}
+```
 
-## 交换机到底是什么
+| 字段 | 常用值 | 说明 |
+| --- | --- | --- |
+| `name` | `order.event.exchange` | 交换机名称 |
+| `type` | `direct` / `topic` / `fanout` / `headers` | 路由规则 |
+| `durable` | `true` | Broker 重启后是否保留交换机 |
+| `autoDelete` | `false` | 没有绑定后是否自动删除 |
+| `arguments` | `{}` | 扩展参数 |
 
-交换机可以理解成“消息分发器”。
+交换机不负责长期保存业务消息。
+如果消息没路由到任何队列，并且没有其他兜底策略，它就可能直接丢掉。
 
-它本身通常不负责长期存消息，主要职责是：
+## `direct`：精确匹配
 
-- 接收生产者消息
-- 根据规则把消息路由到一个或多个队列
+`direct` 交换机按绑定键精确匹配。
 
-RabbitMQ 最常见的交换机类型有四种：
+```text
+Exchange: order.direct.exchange
 
-- `direct`
-- `topic`
-- `fanout`
-- `headers`
+Binding:
+  order.created.queue <- order.created
+  order.paid.queue    <- order.paid
+```
 
-实际项目里最常用的是前三种。
+匹配结果：
 
-## `direct` 交换机
+| 消息 `routingKey` | 进入队列 |
+| --- | --- |
+| `order.created` | `order.created.queue` |
+| `order.paid` | `order.paid.queue` |
+| `order.cancelled` | 不进入上面两个队列 |
 
-`direct` 的规则最简单：
+适合：
 
-- 路由键完全匹配才投递
-
-例如：
-
-- 消息路由键：`order.created`
-- 队列绑定键：`order.created`
-
-这样才会进入该队列。
-
-适合场景：
-
-- 明确单一类型事件
-- 分类固定
+- 事件类型固定
 - 路由要求精确
-
-比如：
-
-- `user.registered`
-- `order.paid`
-- `coupon.expired`
-
-## `topic` 交换机
-
-`topic` 是项目里非常常见的一种，因为它更灵活。
-
-它支持按点分词，并使用通配符匹配：
-
-- `*`：匹配一个单词
-- `#`：匹配零个或多个单词
-
-例如：
-
-- 路由键：`order.pay.success`
-- 绑定键：`order.*.success`
-- 绑定键：`order.#`
-
-这两种都能匹配成功。
-
-适合场景：
-
-- 事件分层明显
-- 同一类事件有多个粒度
-- 需要后续灵活扩展
-
-例如：
-
-- `trade.order.created`
-- `trade.order.paid`
-- `trade.refund.success`
-
-## `fanout` 交换机
-
-`fanout` 不看路由键，直接广播到所有绑定队列。
-
-适合场景：
-
-- 一条消息需要无差别通知多个系统
-- 重点是广播，而不是分类路由
-
-比如：
-
-- 系统配置刷新通知
-- 某类事件广播给多个下游服务
-
-缺点也很明显：
-
-- 路由控制能力弱
-- 后面队列一多，容易失控
-
-所以业务系统里通常不会把它作为默认选择。
-
-## `headers` 交换机
-
-它根据消息头路由，而不是根据路由键。
-
-理论上很灵活，但实际业务里用得远少于：
-
-- `direct`
-- `topic`
-- `fanout`
-
-如果不是有非常明确的头部路由需求，通常不用它。
-
-## 队列到底负责什么
-
-队列最核心的职责只有一个：
-
-**存消息，等消费。**
-
-一个队列常见需要关注这些属性：
-
-- 是否持久化
-- 是否独占
-- 是否自动删除
-- 是否绑定死信交换机
-- 是否设置 TTL
-- 是否设置最大长度
-
-所以队列不是“一个名字”那么简单，而是消息生命周期策略的重要承载体。
-
-## 绑定是什么
-
-绑定就是把：
-
-- 某个交换机
-- 某个队列
-- 某种匹配规则
-
-连起来。
+- 不需要层级通配
 
 例如：
 
 ```text
-Exchange: order.exchange
-Queue: order.create.queue
-BindingKey: order.create
+user.registered
+order.created
+order.paid
+coupon.expired
 ```
 
-它表达的是：
+## `topic`：按单词通配
 
-- 发到 `order.exchange`
-- 路由键为 `order.create`
-- 就进入 `order.create.queue`
+`topic` 交换机把路由键按 `.` 分段。
 
-没有绑定，交换机就算收到了消息，也不知道该路由到哪里。
+通配符：
 
-## 路由键是什么
+| 符号 | 含义 |
+| --- | --- |
+| `*` | 匹配一个单词 |
+| `#` | 匹配零个或多个单词 |
 
-路由键是生产者发送消息时带上的一个字符串，它本质上是“消息分类标签”。
+例子：
+
+```text
+Exchange: order.topic.exchange
+
+Binding:
+  order.audit.queue  <- order.#
+  order.pay.queue    <- order.*.paid
+  order.all.queue    <- #
+```
+
+匹配结果：
+
+| 消息 `routingKey` | `order.#` | `order.*.paid` | `#` |
+| --- | --- | --- | --- |
+| `order.created` | 命中 | 不命中 | 命中 |
+| `order.trade.paid` | 命中 | 命中 | 命中 |
+| `order.trade.pay.success` | 命中 | 不命中 | 命中 |
+| `user.created` | 不命中 | 不命中 | 命中 |
+
+实际项目里，业务事件优先考虑 `topic`。
+因为它能同时支持精确消费和粗粒度订阅。
+
+推荐路由键风格：
+
+```text
+领域.对象.动作
+```
 
 例如：
 
-- `user.register`
-- `order.create`
-- `order.pay.success`
+```text
+order.created
+order.paid
+order.cancelled
+refund.created
+member.level.upgraded
+```
 
-注意：
+不要一会儿写 `order.create`，一会儿写 `order.created`。路由键不统一，后面绑定和排查都会变脏。
 
-**路由键不是固定必须有业务语义，但最好让它有清晰命名规则。**
+## `fanout`：广播到所有绑定队列
 
-否则后面排查、扩展、监控都会很痛苦。
+`fanout` 不看 `routingKey`。
 
-比较推荐的风格是：
+```text
+Exchange: system.broadcast.exchange(fanout)
 
-- `领域.对象.动作`
-- `系统.事件.状态`
+Binding:
+  cache.refresh.queue
+  search.reindex.queue
+  config.reload.queue
+```
+
+只要消息发到这个交换机，所有绑定队列都会收到一份。
+
+适合：
+
+- 配置刷新
+- 缓存失效广播
+- 多个下游都无差别接收同一事件
+
+不适合：
+
+- 复杂业务分类
+- 只想让部分下游接收
+- 后续路由规则会变复杂的场景
+
+## `headers`：按消息头匹配
+
+`headers` 交换机按 `properties.headers` 匹配，不看 `routingKey`。
+
+例如按：
+
+```text
+headers.region = "cn"
+headers.source = "order-service"
+```
+
+来决定是否进入队列。
+
+它比较灵活，但业务系统里不常作为默认选择。
+除非你明确需要按 header 组合路由，否则优先用 `direct` 或 `topic`。
+
+## Queue：真正存消息的地方
+
+队列声明时常见参数：
+
+```text
+name = "stock.order.paid.queue"
+durable = true
+exclusive = false
+autoDelete = false
+arguments = {
+  "x-dead-letter-exchange": "order.dlx.exchange",
+  "x-dead-letter-routing-key": "order.paid.dead",
+  "x-message-ttl": 60000
+}
+```
+
+| 参数 | 说明 |
+| --- | --- |
+| `durable` | Broker 重启后队列是否还在 |
+| `exclusive` | 是否只允许当前连接使用，连接关闭后删除 |
+| `autoDelete` | 最后一个消费者取消订阅后是否删除 |
+| `x-message-ttl` | 队列内消息存活时间 |
+| `x-dead-letter-exchange` | 死信转发到哪个交换机 |
+| `x-dead-letter-routing-key` | 死信转发时使用的路由键 |
+| `x-max-length` | 队列最大消息数 |
+
+业务队列通常用：
+
+```text
+durable = true
+exclusive = false
+autoDelete = false
+```
+
+临时回调队列或测试队列才更常用 `exclusive` / `autoDelete`。
+
+## Binding：路由规则落地的位置
+
+绑定表达的是：
+
+```text
+某个 exchange 的某类消息 -> 进入某个 queue
+```
+
+例子：
+
+```text
+Exchange: order.event.exchange(topic)
+Queue: stock.order.paid.queue
+BindingKey: order.paid
+```
+
+含义：
+
+```text
+发到 order.event.exchange
+并且 routingKey 匹配 order.paid
+就进入 stock.order.paid.queue
+```
+
+一个队列可以绑定多个规则：
+
+```text
+stock.order.queue <- order.created
+stock.order.queue <- order.paid
+stock.order.queue <- order.cancelled
+```
+
+一个交换机也可以绑定多个队列：
+
+```text
+order.event.exchange
+  -> stock.order.paid.queue    <- order.paid
+  -> coupon.order.paid.queue   <- order.paid
+  -> audit.order.event.queue   <- order.#
+```
+
+## 默认交换机
+
+RabbitMQ 有一个特殊的默认交换机，名字是空字符串 `""`。
+
+它的规则是：
+
+```text
+routingKey = queueName
+```
 
 例如：
 
-- `order.created`
-- `order.paid`
-- `member.level.upgraded`
+```text
+exchange = ""
+routingKey = "hello.queue"
+```
 
-## 一个典型业务例子
+消息会进入名为 `hello.queue` 的队列。
 
-假设有个电商系统，订单支付成功后，要同时做三件事：
+这适合 demo 或简单测试，但业务系统里不建议长期依赖默认交换机。
+原因是它会让生产者重新耦合到队列名。
+
+## 没路由到队列会怎样
+
+如果消息发到交换机后，没有任何绑定匹配：
+
+```text
+Producer -> Exchange -> no matched queue
+```
+
+默认情况下，这条消息可能直接被丢弃。
+
+如果不希望静默丢失，常用两种方式：
+
+### 1. `mandatory`
+
+生产者发送时打开 `mandatory`。
+如果消息不可路由，Broker 会把消息退回给生产者。
+
+适合：
+
+- 生产者需要立刻知道“没有队列接这类消息”
+- 需要打日志或告警
+
+### 2. Alternate Exchange
+
+给交换机配置备用交换机：
+
+```text
+order.event.exchange
+  arguments:
+    alternate-exchange = order.unrouted.exchange
+```
+
+不可路由消息会转发到备用交换机，再进入兜底队列。
+
+适合：
+
+- 统一收集无法路由的消息
+- 后续人工排查或补偿
+
+## 一个业务建模例子
+
+订单支付成功后，需要：
 
 1. 扣库存
-2. 发优惠券通知
-3. 记业务日志
+2. 发优惠券
+3. 记审计日志
 
-比较合理的建模方式通常不是：
-
-- 一个消费者里串行做完三件事
-
-而是：
-
-- 生产者发一条 `order.paid` 消息到交换机
-- 三个不同队列分别处理库存、通知、日志
-
-例如：
+不要写成一个消费者串行做完所有事。更稳的是每个职责一个队列：
 
 ```text
-Producer -> order.event.exchange(topic)
-                -> stock.order.paid.queue
-                -> coupon.order.paid.queue
-                -> audit.order.paid.queue
+Producer
+  publish exchange = order.event.exchange
+  routingKey = order.paid
+  body = { orderId, paidAt, amount }
+
+order.event.exchange(topic)
+  ├─ stock.order.paid.queue   binding: order.paid
+  ├─ coupon.order.paid.queue  binding: order.paid
+  └─ audit.order.event.queue  binding: order.#
 ```
 
-这样带来的好处是：
+这样：
 
-- 各消费逻辑解耦
-- 后面新增下游更容易
-- 某个消费失败不会直接堵死全部逻辑
+- 库存失败不会阻塞优惠券队列。
+- 审计可以订阅所有订单事件。
+- 新增积分服务时，只要加一个队列和绑定，不用改生产者。
 
-## 一个队列多个消费者，和多个队列多个消费者，有什么区别
+## 一个队列多个消费者
 
-这也是初学 RabbitMQ 很容易搞混的点。
+```text
+stock.order.paid.queue
+  ├─ stock-consumer-1
+  ├─ stock-consumer-2
+  └─ stock-consumer-3
+```
 
-### 一个队列，多个消费者
+这是竞争消费。
 
-特点：
-
-- 多个消费者竞争消费
-- 一条消息只会被其中一个消费者处理
-
-适合：
-
-- 横向扩容
-- 提升吞吐
-
-### 多个队列，各自一个或多个消费者
-
-特点：
-
-- 同一条消息可以被复制到多个队列
-- 每个队列代表一类独立业务处理
+一条消息只会投递给其中一个消费者。
+它解决的是吞吐问题，不是广播问题。
 
 适合：
 
-- 广播多个业务动作
-- 下游职责拆分
+- 同一类任务横向扩容
+- 消费逻辑完全一致
+- 不要求每个消费者都收到同一条消息
 
-这两种模式服务的是完全不同的问题：
+如果想让多个业务方都收到同一条消息，要建多个队列，而不是给一个队列挂多个消费者。
 
-- 前者是扩容
-- 后者是解耦
+## 多个队列订阅同一事件
 
-## RabbitMQ 和 Kafka 的一个重要区别
+```text
+order.event.exchange(topic)
+  ├─ stock.order.paid.queue   <- order.paid
+  ├─ coupon.order.paid.queue  <- order.paid
+  └─ audit.order.paid.queue   <- order.paid
+```
 
-虽然这篇不是 Kafka 笔记，但要先建立一个边界感：
+这是业务解耦。
 
-RabbitMQ 更偏：
+同一条消息会复制到多个队列。
+每个队列都有自己的堆积、重试、死信和消费进度。
 
-- 任务分发
-- 业务异步解耦
-- 灵活路由
-- 细粒度确认
+对比一下：
 
-Kafka 更偏：
+| 模式 | 一条消息被处理几次 | 解决什么问题 |
+| --- | --- | --- |
+| 一个队列多个消费者 | 1 次 | 提升同一任务吞吐 |
+| 多个队列绑定同一事件 | 多次 | 多个业务方独立处理 |
 
-- 高吞吐日志流
-- 大规模事件流平台
-- 顺序分区消费
+## 消费确认和重投递
 
-所以 RabbitMQ 最常见的落点通常是：
+消费者收到消息后，消息进入 `unacked`。
 
-- 下单后异步处理
-- 发短信、邮件、站内信
-- 订单状态同步
-- 延迟关闭订单
-- 业务事件通知
+常见处理结果：
 
-而不一定是做超大规模流式数据平台。
+| 动作 | 含义 |
+| --- | --- |
+| `ack` | 处理成功，Broker 删除消息 |
+| `nack(requeue=true)` | 处理失败，重新入队 |
+| `nack(requeue=false)` | 处理失败，不重新入队，可能进入死信 |
+| `reject` | 拒绝单条消息，语义类似 nack |
 
-## 学 RabbitMQ 时最容易踩的几个误区
+不要在业务处理前就 ack。
+否则业务失败时，Broker 已经认为消息处理完了。
 
-### 1. 以为消息是发给队列的
+也不要无脑 `requeue=true`。
+如果消息本身有毒，会形成无限重投。
 
-这是最常见误区。  
-正确理解一定是：
+## Prefetch：控制消费者一次拿多少
 
-- 生产者发给交换机
-- 交换机路由到队列
+消费者可以设置 `prefetch`，限制未确认消息数量：
 
-### 2. 以为交换机会存消息
+```text
+prefetch = 10
+```
 
-一般情况下，真正承担“存”的是队列。  
-交换机主要做路由决策。
+含义：
 
-### 3. 看到一个队列多个消费者，就以为是广播
+```text
+同一个 consumer 最多同时持有 10 条 unacked 消息
+```
 
-不是。  
-一个队列多个消费者通常是竞争消费，一条消息只会给一个消费者。
+它影响：
 
-### 4. 所有场景都用同一种交换机
+- 消费端内存
+- 单消费者压力
+- 消息分配公平性
+- 堆积恢复速度
 
-实际项目里应该按场景选：
+一般经验：
 
-- 精确匹配：`direct`
-- 模式匹配：`topic`
-- 广播：`fanout`
+- 单条处理慢：`prefetch` 小一点。
+- 单条处理快：可以适当加大。
+- 处理逻辑会调用下游接口：不要太大，避免把下游打爆。
 
-### 5. 路由键乱命名
+## Spring AMQP 声明示例
 
-短期看没问题，长期排查和扩展会非常难受。
+后面单独写 Spring Boot 集成时会展开，这里先看模型怎么落到代码：
 
-## 如果你刚开始建项目，怎么选最稳
+```java
+@Configuration
+public class RabbitOrderConfig {
 
-我会给一个很务实的建议：
+    public static final String ORDER_EXCHANGE = "order.event.exchange";
+    public static final String STOCK_QUEUE = "stock.order.paid.queue";
+    public static final String COUPON_QUEUE = "coupon.order.paid.queue";
+    public static final String AUDIT_QUEUE = "audit.order.event.queue";
 
-1. 大多数业务事件优先考虑 `topic` 交换机
-2. 路由键统一命名，例如 `order.created`、`order.paid`
-3. 队列按消费职责拆，不要一开始就全堆到一个消费者里
-4. 生产者只关注事件发布，不关心下游几个队列
+    @Bean
+    public TopicExchange orderExchange() {
+        return ExchangeBuilder
+                .topicExchange(ORDER_EXCHANGE)
+                .durable(true)
+                .build();
+    }
 
-因为真实项目里，最常发生的不是“消息发不出去”，而是：
+    @Bean
+    public Queue stockQueue() {
+        return QueueBuilder
+                .durable(STOCK_QUEUE)
+                .deadLetterExchange("order.dlx.exchange")
+                .deadLetterRoutingKey("order.paid.dead")
+                .build();
+    }
 
-- 下游越来越多
-- 同类事件越来越细
-- 某个消费者逻辑越来越重
+    @Bean
+    public Queue couponQueue() {
+        return QueueBuilder.durable(COUPON_QUEUE).build();
+    }
 
-这时候 `topic + 明确路由键 + 职责拆队列` 往往最稳。
+    @Bean
+    public Queue auditQueue() {
+        return QueueBuilder.durable(AUDIT_QUEUE).build();
+    }
 
-## 这一层学会以后，后面该接什么
+    @Bean
+    public Binding stockBinding() {
+        return BindingBuilder
+                .bind(stockQueue())
+                .to(orderExchange())
+                .with("order.paid");
+    }
 
-如果这一篇讲的是 RabbitMQ 的静态骨架，那下一层真正该补的是：
+    @Bean
+    public Binding couponBinding() {
+        return BindingBuilder
+                .bind(couponQueue())
+                .to(orderExchange())
+                .with("order.paid");
+    }
 
-- Spring Boot 怎么声明交换机、队列、绑定
-- 生产者怎么发消息
-- 消费者怎么监听
-- ack、重试、死信到底怎么配
+    @Bean
+    public Binding auditBinding() {
+        return BindingBuilder
+                .bind(auditQueue())
+                .to(orderExchange())
+                .with("order.#");
+    }
+}
+```
 
-也就是说，下一篇最顺的通常就是：
+这段代码对应的不是“创建几个 Bean”而是这张拓扑：
 
-**`Spring Boot 整合 RabbitMQ`**
+```text
+order.event.exchange(topic)
+  ├─ stock.order.paid.queue   <- order.paid
+  ├─ coupon.order.paid.queue  <- order.paid
+  └─ audit.order.event.queue  <- order.#
+```
 
-因为只有把这套模型和代码声明方式连起来，RabbitMQ 才真正开始可用。
+## 生产者发送示例
+
+```java
+rabbitTemplate.convertAndSend(
+        "order.event.exchange",
+        "order.paid",
+        new OrderPaidMessage(orderId, amount, paidAt),
+        message -> {
+            message.getMessageProperties().setMessageId(UUID.randomUUID().toString());
+            message.getMessageProperties().setContentType(MessageProperties.CONTENT_TYPE_JSON);
+            message.getMessageProperties().setDeliveryMode(MessageDeliveryMode.PERSISTENT);
+            return message;
+        }
+);
+```
+
+这里最重要的是：
+
+- exchange 固定为业务事件交换机
+- routing key 表达业务事件
+- body 是业务载荷
+- properties 放追踪、序列化、持久化等元信息
+
+不要在发送方写死下游队列名。
+
+## 消费者监听示例
+
+```java
+@RabbitListener(
+        queues = RabbitOrderConfig.STOCK_QUEUE,
+        ackMode = "MANUAL"
+)
+public void handleStock(
+        OrderPaidMessage message,
+        Channel channel,
+        @Header(AmqpHeaders.DELIVERY_TAG) long deliveryTag
+) throws IOException {
+    try {
+        stockService.lockStock(message.orderId());
+        channel.basicAck(deliveryTag, false);
+    } catch (RecoverableException exception) {
+        channel.basicNack(deliveryTag, false, true);
+    } catch (Exception exception) {
+        channel.basicNack(deliveryTag, false, false);
+    }
+}
+```
+
+这段代码背后的模型是：
+
+- 消费者从 `stock.order.paid.queue` 拿消息。
+- 成功后 `ack`。
+- 可恢复错误可以重新入队。
+- 不可恢复错误不重新入队，交给死信或告警。
+
+## 命名建议
+
+交换机：
+
+```text
+{domain}.event.exchange
+```
+
+队列：
+
+```text
+{consumer}.{domain}.{event}.queue
+```
+
+路由键：
+
+```text
+{domain}.{event}
+```
+
+例子：
+
+```text
+order.event.exchange
+stock.order.paid.queue
+coupon.order.paid.queue
+audit.order.event.queue
+order.paid
+order.created
+refund.created
+```
+
+命名要服务排查。看到队列名时，最好能知道：
+
+- 谁消费
+- 消费哪个领域
+- 消费哪类事件
+
+## 常见误区
+
+### 1. 以为消息发给队列
+
+业务系统里更推荐：
+
+```text
+Producer -> Exchange -> Queue
+```
+
+不要让生产者依赖下游队列名。
+
+### 2. 以为一个队列多个消费者是广播
+
+不是广播，是竞争消费。
+广播要多个队列分别绑定同一个事件。
+
+### 3. 交换机、队列、绑定没有版本意识
+
+如果随便改 exchange、routing key、binding key，旧生产者和旧消费者可能直接断链。
+
+修改路由拓扑时要考虑：
+
+- 旧消息还在不在队列里
+- 新旧消费者是否同时存在
+- 是否需要临时双写 routing key
+
+### 4. 所有业务都共用一个队列
+
+这样会导致：
+
+- 某个慢消费拖累全部业务
+- 重试和死信策略没法分开
+- 排查时不知道是哪类消息堆积
+
+队列应该按消费职责拆。
+
+### 5. 所有消息都无脑重新入队
+
+如果是参数错误、状态非法、下游永远不会接受的消息，重新入队只会制造死循环。
+
+## 建模检查清单
+
+设计一条 RabbitMQ 链路时，至少回答这些问题：
+
+- 这个消息代表什么业务事件？
+- exchange 名是什么？
+- exchange 类型是什么？
+- routing key 命名是什么？
+- 哪些队列会接这条消息？
+- 每个队列由哪个服务消费？
+- 每个队列的死信策略是什么？
+- 消费失败时是重试、死信，还是直接告警？
+- 需要保证幂等吗？
+- 消费者 prefetch 设多少？
+- 不可路由消息要不要兜底？
+
+如果这些问题答不出来，先别急着写 `@RabbitListener`。
+
+## 最后记一句话
+
+RabbitMQ 的消息模型不是“发消息然后消费”这么简单，而是：
+
+**用 exchange、routing key、binding 和 queue，把一条业务事件分发给正确的消费职责，并让每个职责拥有独立的消费进度、失败处理和扩容能力。**

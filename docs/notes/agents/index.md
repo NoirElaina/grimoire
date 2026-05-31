@@ -16,18 +16,12 @@ sidebarTitle: 专题首页
 
 ## 基础工程页
 
-- [Agent 设计](/notes/agents/agent-design-template)
-- [System Prompt](/notes/agents/system-prompt-template)
 - [工具调用](/notes/agents/tooling-template)
 
 ## 协议与运行时
 
 - [SSE 流式响应](/notes/agents/sse-streaming)
 - [MCP 协议](/notes/agents/mcp-protocol)
-
-## 训练与优化
-
-- [强化学习工程入门](/notes/agents/reinforcement-learning)
 
 ## 源码解析
 

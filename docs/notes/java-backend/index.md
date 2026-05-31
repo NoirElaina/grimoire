@@ -21,6 +21,7 @@ sidebarTitle: 专题首页
 - [问题排查](/notes/java-backend/troubleshooting-template)
 - [JWT 鉴权设计笔记](/notes/java-backend/jwt-auth)
 - [MyBatis-Plus 使用笔记](/notes/java-backend/mybatis-plus)
+- [Spring 事务回滚规则](/notes/java-backend/transactional-rollback)
 - [OpenFeign 使用笔记](/notes/java-backend/openfeign)
 - [Nacos 使用笔记](/notes/java-backend/nacos)
 - [Sentinel 使用笔记](/notes/java-backend/sentinel)

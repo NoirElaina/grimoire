@@ -100,16 +100,6 @@ export default defineConfig({
           items: [
             createDocItem('notes/agents/index.md', '/notes/agents/', '专题首页'),
             createDocItem(
-              'notes/agents/agent-design-template.md',
-              '/notes/agents/agent-design-template',
-              'Agent 设计'
-            ),
-            createDocItem(
-              'notes/agents/system-prompt-template.md',
-              '/notes/agents/system-prompt-template',
-              'System Prompt'
-            ),
-            createDocItem(
               'notes/agents/tooling-template.md',
               '/notes/agents/tooling-template',
               '工具调用'
@@ -123,11 +113,6 @@ export default defineConfig({
               'notes/agents/mcp-protocol.md',
               '/notes/agents/mcp-protocol',
               'MCP 协议'
-            ),
-            createDocItem(
-              'notes/agents/reinforcement-learning.md',
-              '/notes/agents/reinforcement-learning',
-              '强化学习'
             )
           ]
         },
@@ -223,6 +208,11 @@ export default defineConfig({
               'notes/java-backend/mybatis-plus.md',
               '/notes/java-backend/mybatis-plus',
               'MyBatis-Plus'
+            ),
+            createDocItem(
+              'notes/java-backend/transactional-rollback.md',
+              '/notes/java-backend/transactional-rollback',
+              'Spring 事务回滚'
             ),
             createDocItem(
               'notes/java-backend/openfeign.md',
