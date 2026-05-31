@@ -5,124 +5,261 @@ sidebarTitle: 接口设计
 
 # 接口设计
 
-后端接口最容易出问题的地方，不是“怎么写个 Controller”，而是：
+> 接口设计先把“资源、参数、返回、错误、权限、幂等”定清楚，再写 Controller。
 
-- URL 命名混乱
-- DTO / VO 不清楚
-- 错误码随手写
-- 幂等、分页、权限要求没有提前定
+## 先给结论
 
-所以这篇不再只是留一个表格模板，而是直接给一版更实用的接口设计方法和代码骨架。
+后端接口最容易乱在这些地方：
 
-## 先说结论
+- URL 一会儿名词一会儿动词。
+- 请求体直接用 Entity。
+- 错误码每个接口自己发明。
+- 分页、排序、筛选没有统一约定。
+- 权限和幂等没写进设计。
+- Controller 里夹业务逻辑。
 
-一个接口设计得稳不稳，通常先看这 6 件事：
+一版合格接口，至少要写清：
 
-1. 资源命名是否清楚
-2. 请求 DTO 是否独立
-3. 返回 VO 是否稳定
-4. 错误和异常是否统一
-5. 幂等、权限、分页是否提前设计
-6. Controller / Service / Mapper 责任是否分清
+- 谁调用。
+- 调什么资源。
+- 需要什么权限。
+- 请求参数和校验规则。
+- 成功返回结构。
+- 失败错误码。
+- 是否分页、排序、幂等。
 
-一句话就是：
+## URL 先按资源设计
 
-**接口设计不是“把表字段暴露出去”，而是给调用方提供稳定业务契约。**
-
-## 先从 URL 设计开始
-
-比较推荐的基本风格：
-
-- 资源优先
-- 路径名用名词
-- 动作用 HTTP 方法表达
-
-例如：
+推荐：
 
 ```text
-GET    /api/users/{id}
-POST   /api/users
-PUT    /api/users/{id}
-DELETE /api/users/{id}
-GET    /api/orders/{id}
-POST   /api/orders
+GET    /users                 查询用户列表
+POST   /users                 创建用户
+GET    /users/{userId}        查询用户详情
+PUT    /users/{userId}        整体更新用户
+PATCH  /users/{userId}        局部更新用户
+DELETE /users/{userId}        删除用户
 ```
 
-不要写成：
+不要：
 
 ```text
-/api/getUserById
-/api/createOrder
-/api/deleteUser
+POST /createUser
+POST /queryUserList
+POST /deleteUser
+GET  /user/getById
 ```
 
-这种写法在项目变大后会越来越乱。
-
-## 一个接口设计说明至少要先写清这些
+动作类接口可以放到资源下面：
 
 ```text
-接口名称：
-请求路径：
-请求方法：
-调用方：
-是否需要登录：
-是否幂等：
-是否分页：
-主要异常场景：
+POST /orders/{orderId}/cancel
+POST /orders/{orderId}/pay
+POST /orders/{orderId}/confirm-receipt
 ```
 
-这部分不是文档形式主义，而是后面代码边界的来源。
+判断方法：
 
-## 请求 DTO 一定要独立
+- 能用资源 + HTTP 方法表达，就不要在 URL 里写动词。
+- 业务动作确实不是 CRUD，就用子资源动作。
+- URL 用复数名词：`/users`、`/orders`。
+- 路径参数放资源 ID，筛选条件放 query。
 
-例如创建用户：
+## HTTP 方法约定
 
-```java
-@Data
-public class CreateUserRequest {
+| 方法 | 用法 | 是否幂等 |
+| --- | --- | --- |
+| `GET` | 查询 | 是 |
+| `POST` | 创建、提交动作 | 通常否 |
+| `PUT` | 整体替换 | 是 |
+| `PATCH` | 局部修改 | 通常是，但看实现 |
+| `DELETE` | 删除 | 是 |
 
-    @NotBlank(message = "username cannot be blank")
-    private String username;
+注意：
 
-    @NotBlank(message = "password cannot be blank")
-    private String password;
+- `GET` 不要产生业务写入。
+- `POST` 创建成功可以返回新资源 ID。
+- `PUT` 更适合“客户端提交完整对象”。
+- `PATCH` 更适合只改几个字段。
+- 删除如果是逻辑删除，也还是用 `DELETE`。
 
-    @Email(message = "email format invalid")
-    private String email;
+## 请求参数放哪里
+
+路径参数：资源 ID。
+
+```http
+GET /users/10001
+```
+
+query 参数：筛选、分页、排序。
+
+```http
+GET /orders?userId=10001&status=PAID&pageNo=1&pageSize=20
+```
+
+body：创建、修改的复杂数据。
+
+```json
+{
+  "username": "alice",
+  "mobile": "13800138000",
+  "roleIds": [1, 2]
 }
 ```
 
-这里 DTO 的关键价值在于：
+Header：认证、追踪、幂等。
 
-- 参数校验有承载位置
-- 不把数据库字段原样暴露给外部
-- 后面扩字段不会把 Entity 拖下水
+```http
+Authorization: Bearer <access-token>
+X-Trace-Id: 7f32e1c9f3a44b61
+Idempotency-Key: order-10001-pay-1
+```
 
-## 返回 VO 也不要直接复用 Entity
+## 请求 DTO 独立出来
+
+不要让 Entity 进 Controller：
 
 ```java
-@Data
-@Builder
-public class UserVO {
-    private Long id;
-    private String username;
-    private String email;
-    private Integer status;
+public record CreateUserRequest(
+    @NotBlank(message = "用户名不能为空")
+    @Size(max = 30, message = "用户名不能超过30个字符")
+    String username,
+
+    @NotBlank(message = "手机号不能为空")
+    @Pattern(regexp = "^1\\d{10}$", message = "手机号格式不正确")
+    String mobile,
+
+    @NotEmpty(message = "角色不能为空")
+    List<Long> roleIds
+) {
+
+    public CreateUserCommand toCommand() {
+        return new CreateUserCommand(username, mobile, roleIds);
+    }
 }
 ```
 
-原因很简单：
+为什么要独立：
 
-- Entity 常常带数据库字段
-- VO 只该暴露调用方需要的字段
+- Entity 字段经常比接口多。
+- Entity 可能有内部字段：`deleted`、`version`、`createTime`。
+- 请求字段有校验规则。
+- 接口演进不应该被表结构绑死。
 
-例如密码、逻辑删除标记、内部审计字段，通常都不该出现在返回 VO 里。
+## 返回 VO 独立出来
 
-## 一版比较稳的 Controller 写法
+```java
+public record UserDetailVO(
+    Long id,
+    String username,
+    String mobile,
+    List<String> roles,
+    LocalDateTime createTime
+) {
+}
+```
+
+不要直接返回：
+
+```java
+return userMapper.selectById(id);
+```
+
+返回 VO 的好处：
+
+- 可以隐藏敏感字段。
+- 可以组装多表信息。
+- 可以控制时间、枚举、金额格式。
+- 可以保持接口稳定。
+
+## 统一响应结构
+
+```json
+{
+  "code": "0",
+  "message": "OK",
+  "data": {
+    "id": 10001
+  },
+  "traceId": "7f32e1c9f3a44b61"
+}
+```
+
+Java 结构：
+
+```java
+public record ApiResult<T>(
+    String code,
+    String message,
+    T data,
+    String traceId
+) {
+}
+```
+
+建议：
+
+- `code = "0"` 表示成功。
+- 业务错误用稳定错误码，不要只靠中文文案。
+- `traceId` 每次都返回，方便定位日志。
+- 文件下载、SSE、第三方回调可以不套统一结构。
+
+## 错误码要可定位
+
+错误码示例：
+
+```text
+COMMON_001  参数不合法
+COMMON_401  未登录
+COMMON_403  无权限
+USER_001    手机号已存在
+ORDER_001   订单不存在
+ORDER_002   订单状态不允许取消
+```
+
+错误响应：
+
+```json
+{
+  "code": "ORDER_002",
+  "message": "订单状态不允许取消",
+  "data": null,
+  "traceId": "7f32e1c9f3a44b61"
+}
+```
+
+接口文档里每个接口至少列：
+
+- 参数错误。
+- 未登录 / 无权限。
+- 资源不存在。
+- 状态不允许。
+- 幂等冲突。
+
+## HTTP 状态码怎么用
+
+如果团队有统一响应体，也不要完全无视 HTTP 状态：
+
+| 状态码 | 场景 |
+| --- | --- |
+| `200` | 请求成功，业务成功或业务失败都由响应体表达 |
+| `201` | 创建成功，尤其是 REST 风格明显的创建接口 |
+| `400` | 请求格式或参数不合法 |
+| `401` | 未登录或 token 无效 |
+| `403` | 已登录但无权限 |
+| `404` | 资源不存在 |
+| `409` | 状态冲突、幂等冲突、版本冲突 |
+| `500` | 服务端未知错误 |
+
+内部管理系统可以简单点：HTTP 只区分成功、认证、服务端异常；业务失败看 `code`。
+
+对外开放 API 要更严格：HTTP 状态码和错误码都要设计。
+
+## Controller 写法
 
 ```java
 @RestController
-@RequestMapping("/api/users")
+@RequestMapping("/users")
 public class UserController {
 
     private final UserService userService;
@@ -132,237 +269,249 @@ public class UserController {
     }
 
     @PostMapping
-    public ApiResponse<IdResponse> create(@Valid @RequestBody CreateUserRequest request) {
-        Long id = userService.create(request);
-        return ApiResponse.success(new IdResponse(id));
+    public ApiResult<Long> create(@Valid @RequestBody CreateUserRequest request) {
+        Long userId = userService.createUser(request.toCommand());
+        return ApiResult.ok(userId);
     }
 
-    @GetMapping("/{id}")
-    public ApiResponse<UserVO> getById(@PathVariable Long id) {
-        return ApiResponse.success(userService.getById(id));
-    }
-}
-```
-
-Controller 层最好只做这几件事：
-
-- 接协议
-- 参数校验
-- 调 service
-- 包统一返回
-
-不要在 Controller 里直接写：
-
-- 复杂业务规则
-- SQL
-- 大量 try/catch
-
-## Service 层应该承接业务语义
-
-```java
-public interface UserService {
-    Long create(CreateUserRequest request);
-    UserVO getById(Long id);
-}
-```
-
-实现类里再写业务规则：
-
-```java
-@Service
-public class UserServiceImpl implements UserService {
-
-    private final UserMapper userMapper;
-
-    public UserServiceImpl(UserMapper userMapper) {
-        this.userMapper = userMapper;
+    @GetMapping("/{userId}")
+    public ApiResult<UserDetailVO> detail(@PathVariable Long userId) {
+        return ApiResult.ok(userService.getUserDetail(userId));
     }
 
-    @Override
-    public Long create(CreateUserRequest request) {
-        checkUsernameNotExists(request.getUsername());
-
-        UserEntity entity = new UserEntity();
-        entity.setUsername(request.getUsername());
-        entity.setPassword(hash(request.getPassword()));
-        entity.setEmail(request.getEmail());
-        entity.setStatus(1);
-
-        userMapper.insert(entity);
-        return entity.getId();
-    }
-
-    @Override
-    public UserVO getById(Long id) {
-        UserEntity entity = userMapper.selectById(id);
-        if (entity == null) {
-            throw new BizException(40401, "user not found");
-        }
-        return UserVO.builder()
-                .id(entity.getId())
-                .username(entity.getUsername())
-                .email(entity.getEmail())
-                .status(entity.getStatus())
-                .build();
+    @GetMapping
+    public ApiResult<PageResult<UserListVO>> page(@Valid UserPageQuery query) {
+        return ApiResult.ok(userService.pageUsers(query));
     }
 }
 ```
 
-## 错误响应要统一
+Controller 只做：
 
-一个很容易被忽略的点是：  
-接口设计不只包括成功响应，也包括失败响应。
+- 绑定参数。
+- 调用 Service。
+- 返回结果。
 
-例如可以统一成：
+Controller 不做：
+
+- 查数据库。
+- 拼业务规则。
+- 写事务。
+- 调多个外部系统。
+
+## 分页结构统一
+
+请求参数：
+
+```text
+pageNo=1
+pageSize=20
+sort=createTime,desc
+```
+
+限制：
+
+- `pageNo` 从 1 开始。
+- `pageSize` 默认 20。
+- `pageSize` 最大 100 或 200。
+- 排序字段必须白名单。
+
+返回结构：
 
 ```json
 {
-  "code": 40401,
-  "message": "user not found",
-  "data": null
+  "records": [],
+  "total": 125,
+  "pageNo": 1,
+  "pageSize": 20,
+  "pages": 7
 }
 ```
 
-这样调用方才知道：
-
-- 这是业务错误
-- 还是系统错误
-
-## 分页接口不要临时发明结构
-
-建议一开始统一成固定分页返回：
+Java：
 
 ```java
-@Data
-@Builder
-public class PageResponse<T> {
-    private Long total;
-    private Long current;
-    private Long size;
-    private List<T> records;
+public record PageResult<T>(
+    List<T> records,
+    long total,
+    long pageNo,
+    long pageSize,
+    long pages
+) {
+
+    public static <T> PageResult<T> of(List<T> records, long total, long pageNo, long pageSize) {
+        long pages = pageSize == 0 ? 0 : (total + pageSize - 1) / pageSize;
+        return new PageResult<>(records, total, pageNo, pageSize, pages);
+    }
 }
 ```
 
-接口形态例如：
+## 排序和筛选
+
+不要把前端传来的字段直接拼进 SQL。
+
+推荐白名单：
 
 ```java
-@GetMapping
-public ApiResponse<PageResponse<UserVO>> page(UserPageQuery query) {
-    return ApiResponse.success(userService.page(query));
-}
+private static final Map<String, SFunction<OrderEntity, ?>> SORT_FIELDS = Map.of(
+    "createTime", OrderEntity::getCreateTime,
+    "amount", OrderEntity::getAmount
+);
 ```
 
-不要有的接口叫：
+或者在 XML 里做枚举判断：
 
-- `items`
-- 有的叫 `list`
-- 有的叫 `rows`
+```xml
+<choose>
+    <when test="query.sort == 'amount_desc'">
+        order by o.amount desc
+    </when>
+    <otherwise>
+        order by o.create_time desc
+    </otherwise>
+</choose>
+```
 
-分页结构混乱会让前后端一起痛苦。
+筛选参数要区分：
 
-## 幂等要在接口设计期就想
+- 精确匹配：`status=PAID`。
+- 范围查询：`startTime`、`endTime`。
+- 关键字：`keyword`，需要说明匹配哪些字段。
+- 多选：`statusList=PAID,CLOSED` 或请求体数组。
 
-下面这些接口，经常要提前考虑幂等：
+## 幂等设计
 
-- 创建订单
-- 支付回调
-- 发券
-- 发消息
-- 导入任务
+这些接口要考虑幂等：
 
-比较常见的做法包括：
+- 支付。
+- 下单。
+- 发券。
+- 创建唯一业务资源。
+- MQ 消费回调。
+- 第三方通知。
 
-- 幂等号
-- 唯一业务键
-- token 防重复提交
+常见做法：
 
-如果等到线上重复提交再补，通常已经晚了。
+```http
+POST /orders/10001/pay
+Idempotency-Key: pay-order-10001-v1
+```
 
-## 权限也要写进设计，不要只留给网关猜
-
-例如：
+服务端保存幂等记录：
 
 ```text
-是否需要登录：是
-是否需要角色：ADMIN
-是否仅本人可见：是
+key: pay-order-10001-v1
+status: PROCESSING / SUCCESS / FAILED
+result: 成功响应摘要
+expire_time: 2026-06-01 12:00:00
 ```
 
-然后代码里明确体现：
+处理规则：
+
+- 第一次请求：创建幂等记录并执行业务。
+- 重复请求处理中：返回“处理中”或 409。
+- 重复请求已成功：返回第一次成功结果。
+- 重复请求参数不同：返回幂等冲突。
+
+## 权限写进接口设计
+
+文档里明确：
+
+```text
+接口：POST /orders/{orderId}/cancel
+登录：需要
+角色：admin / order_operator / 订单本人
+数据范围：只能取消自己租户下的订单
+```
+
+代码里不要只靠前端隐藏按钮。
+
+Service 也要校验数据权限：
 
 ```java
-@PreAuthorize("hasRole('ADMIN')")
-@DeleteMapping("/{id}")
-public ApiResponse<Void> delete(@PathVariable Long id) {
-    userService.delete(id);
-    return ApiResponse.success(null);
+OrderEntity order = orderRepository.getRequired(orderId);
+if (!permissionService.canCancel(currentUser, order)) {
+    throw new BizException(ErrorCode.COMMON_FORBIDDEN);
 }
 ```
 
-权限不写进接口设计，后面很容易变成“谁记得加谁加”。
+## 版本控制
 
-## 一个最小接口设计文档模板
+内部系统可以先不做 URL 版本，但要有兼容意识：
 
-下面这版更适合真正写到文档里：
+```text
+/api/users
+```
 
-```md
+对外开放接口推荐显式版本：
+
+```text
+/api/v1/users
+/api/v2/users
+```
+
+接口变更规则：
+
+- 增加非必填字段：通常兼容。
+- 删除字段：破坏兼容。
+- 改字段含义：破坏兼容。
+- 改错误码：破坏兼容。
+- 改分页规则：破坏兼容。
+
+## 最小接口说明模板
+
+````markdown
 ## 创建用户
 
-- 路径：`POST /api/users`
-- 调用方：管理后台
-- 是否登录：是
-- 是否幂等：否
-- 功能：创建新用户
+- 方法：POST
+- 路径：/users
+- 登录：需要
+- 权限：admin:user:create
+- 幂等：按 mobile 唯一约束保证
 
 ### 请求体
 
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
-| username | String | 是 | 用户名 |
-| password | String | 是 | 登录密码 |
-| email | String | 否 | 邮箱 |
+| username | string | 是 | 1～30 个字符 |
+| mobile | string | 是 | 11 位手机号 |
+| roleIds | array | 是 | 角色 ID 列表 |
 
 ### 成功响应
 
 ```json
 {
-  "code": 0,
-  "message": "success",
-  "data": {
-    "id": 1001
-  }
+  "code": "0",
+  "message": "OK",
+  "data": 10001,
+  "traceId": "7f32e1c9f3a44b61"
 }
 ```
 
-### 主要异常
+### 错误码
 
-- 用户名已存在
-- 参数校验失败
-- 权限不足
-```
+| code | message | 场景 |
+| --- | --- | --- |
+| COMMON_001 | 请求参数不合法 | 字段格式错误 |
+| USER_001 | 手机号已存在 | mobile 已注册 |
+| COMMON_403 | 无权限 | 没有创建用户权限 |
+````
 
-## 常见坑
+如果这份说明写不出来，代码大概率也会写歪。
 
-### 1. 用 Entity 直接做请求和返回
+## 检查清单
 
-短期省事，长期会非常难收拾。
-
-### 2. 路径设计像动词列表
-
-项目一大，API 风格就会碎。
-
-### 3. 错误结构不统一
-
-调用方只能靠 message 猜错误类型。
-
-### 4. 分页、筛选、排序约定不统一
-
-前端每接一个列表都像接新系统。
-
-### 5. 幂等和权限没有前置设计
-
-这两件事后补通常都更贵。
+- [ ] URL 是资源名，不是动词列表。
+- [ ] 请求 DTO 和返回 VO 没有复用 Entity。
+- [ ] 参数校验规则写清楚。
+- [ ] 统一响应结构确定。
+- [ ] 错误码稳定且可定位。
+- [ ] 分页、排序、筛选约定统一。
+- [ ] 排序字段有白名单。
+- [ ] 权限和数据范围已写进设计。
+- [ ] 写接口前确认是否需要幂等。
+- [ ] Controller 没有业务逻辑。
 
 ## 最后记一句话
 
-**好的接口设计，不是把后端内部实现暴露出去，而是给调用方一份稳定、清楚、可长期演进的业务契约。**
+接口设计不是“路径怎么起名”，而是把调用契约提前固定住。

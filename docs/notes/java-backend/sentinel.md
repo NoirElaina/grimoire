@@ -5,332 +5,601 @@ sidebarTitle: Sentinel
 
 # Sentinel 使用笔记
 
-Sentinel 最容易被误解成“一个限流框架”，但它真正解决的是**服务运行时流量治理**。
+Sentinel 用来做运行时流量治理：
 
-它关注的不是“有没有请求过来”，而是：
+```text
+请求进入资源
+  -> Sentinel 判断规则
+  -> 通过 / 限流 / 熔断 / 降级
+```
 
-- 请求太多时怎么挡
-- 某个依赖慢了时怎么熔
-- 某个热点参数异常时怎么控
-- 资源维度怎么定义
-- 出问题时系统怎么优雅退化
+这篇不讲“Sentinel 很强”，只记项目里怎么落：资源怎么定义、规则怎么配、`blockHandler` 和 `fallback` 怎么写、规则怎么放到 Nacos、哪些链路不能假降级。
 
-如果只是把 Sentinel 理解成“接口 QPS 到了就拒绝”，那只用了它很小一部分能力。
+## 先给结论
 
-## 先说结论
+后端项目接 Sentinel，先按这套来：
 
-普通 Java 后端项目里，Sentinel 更稳的用法通常是：
+1. 先定义资源名，再配置规则。
+2. 资源名要稳定，不要随便用中文或动态参数拼接。
+3. HTTP 接口、Service 方法、Feign 调用、MQ 消费逻辑都可以是资源。
+4. `blockHandler` 处理 Sentinel 拦截，例如限流、熔断、系统保护。
+5. `fallback` 处理业务异常，不等于限流处理。
+6. 降级返回必须有业务语义，不要返回假成功。
+7. 规则不要只配在控制台内存里，生产要接动态数据源。
+8. Sentinel 是保护系统稳定性，不是业务补偿系统。
 
-1. 先把资源定义清楚，再谈流控规则。
-2. 限流、熔断、系统保护要分开看，不要混成一个按钮。
-3. 热点参数限流只给极少数确实有热点分布的问题场景。
-4. 降级返回必须有业务语义，不要返回一堆假成功。
-5. Sentinel 适合做运行时保护，不适合替代完整业务补偿设计。
+一句话：
 
-一句话就是：
+**Sentinel 先保护资源，再谈规则；先明确失败语义，再谈降级返回。**
 
-**Sentinel 保护的是系统稳定性，不是帮你掩盖业务设计问题。**
+## 依赖和基础配置
 
-## 它到底解决什么
+Spring Cloud Alibaba 项目常用 starter：
 
-一个服务在线上最常见的崩法通常不是“代码完全不能跑”，而是：
+```xml
+<dependency>
+    <groupId>com.alibaba.cloud</groupId>
+    <artifactId>spring-cloud-starter-alibaba-sentinel</artifactId>
+</dependency>
+```
 
-- 瞬时流量太大
-- 下游变慢把线程拖死
-- 某类热点请求把资源吃光
-- 整机负载过高还继续接流量
+配置控制台地址：
 
-Sentinel 就是在这些点上给系统加保护层。
+```yaml
+spring:
+  application:
+    name: order-service
+  cloud:
+    sentinel:
+      transport:
+        dashboard: 127.0.0.1:8858
+        port: 8719
+```
 
-它最常见的能力包括：
+说明：
 
-- 流控
-- 熔断降级
-- 系统保护
-- 热点参数限流
-- 实时规则管理
+| 配置 | 含义 |
+| --- | --- |
+| `dashboard` | Sentinel Dashboard 地址 |
+| `port` | 应用和 Dashboard 通信使用的客户端端口 |
 
-## 先理解“资源”是什么
+Dashboard 主要用于查看资源、配置规则、观察实时数据。
+生产环境规则不要只依赖 Dashboard 临时配置，应用重启后容易丢。
 
-Sentinel 最核心的概念不是规则，而是 `resource`。
+## 资源是什么
+
+Sentinel 的核心不是“接口”，而是 `resource`。
 
 资源可以是：
 
-- 一个 HTTP 接口
-- 一个方法
-- 一个 Feign 调用
-- 一个 MQ 消费处理逻辑
+```text
+GET:/api/orders/{id}
+order.create
+order.pay
+remote.user.getById
+rabbitmq.orderPaid.consume
+```
 
-也就是说，Sentinel 并不只保护 Web 接口，它保护的是“你定义的运行单元”。
+资源名建议：
 
-这也是它和很多简单 API 限流组件最大的区别。
-
-## 流控到底在控什么
-
-最基础的就是控制资源通过量。
-
-常见维度有：
-
-- QPS
-- 并发线程数
-
-### QPS 模式
-
-适合：
-
-- Web 接口
-- 短请求
-- 典型读接口
-
-### 线程数模式
-
-适合：
-
-- 慢方法
-- 容易阻塞的资源
-- 下游调用型逻辑
-
-因为有些场景不是请求数太大，而是单次处理太慢，把工作线程占满了。
-
-## 流控效果有哪几种
-
-常见可以理解成三种：
-
-### 1. 快速失败
-
-直接拒绝超出的请求。  
-这是最常见也最稳的一种，因为行为清楚。
-
-### 2. 预热
-
-冷系统启动后，不一下子把流量放满，而是逐步提升承载量。  
-适合刚启动、缓存未预热、JIT 未热起来的系统。
-
-### 3. 匀速排队
-
-让请求按固定速率通过。  
-适合某些可以容忍排队的场景，但不适合所有接口都开。
-
-因为排队本身也是等待成本，接口如果本来就需要快响应，排队未必是好事。
-
-## 熔断降级要和限流分开看
-
-很多人会把它们混在一起，但其实不是同一类问题。
-
-### 限流
-
-核心问题是：
-
-- 来的流量太多
-
-### 熔断降级
-
-核心问题是：
-
-- 某个资源已经变慢或异常，继续调用会把系统拖垮
+```text
+领域.动作
+remote.下游服务.接口动作
+mq.主题.消费动作
+```
 
 例如：
 
-- 下游服务 RT 持续升高
-- 异常比例持续过高
-- 异常数明显上升
+```text
+order.create
+order.cancel
+remote.user.getById
+remote.inventory.lockStock
+mq.orderPaid.consume
+```
 
-这时候 Sentinel 会把这个资源临时熔断，让系统有机会恢复，而不是继续把请求都压进去。
+不要这样：
 
-## Sentinel 熔断常见判断维度
+```text
+order.create.1001
+用户下单接口
+/api/orders/1001
+```
 
-通常会围绕这些：
+资源名要稳定，否则规则没法复用，监控也会碎。
 
-- 慢调用比例
-- 异常比例
-- 异常数
+## `@SentinelResource`
 
-这三类很像，但关注点不同：
-
-- 慢调用比例：适合性能退化
-- 异常比例：适合错误率上升
-- 异常数：适合短时间明显出错
-
-如果你用错维度，规则很容易看起来“有配置”，实际没价值。
-
-## 热点参数限流什么时候才值得用
-
-这是 Sentinel 很有特色但也最容易被滥用的一块。
-
-它适合的场景是：
-
-- 某个用户 ID 特别热
-- 某个商品 ID 特别热
-- 某个接口参数分布极度不均衡
-
-例如秒杀商品详情：
-
-- 普通商品请求很分散
-- 某个爆款商品 ID 被瞬时打爆
-
-这时候按“整个接口总 QPS”限流不够精细，就可能要按参数维度控。
-
-但热点参数规则不要滥开，因为：
-
-- 规则复杂度会明显上升
-- 排障和解释成本会变高
-
-## 系统保护不是业务限流
-
-Sentinel 还有整机保护类能力，比如看：
-
-- 系统负载
-- 入口 QPS
-- 并发线程数
-- RT
-
-这层更像“系统级刹车”，而不是针对某一个业务接口做规则。
-
-适合在这些时候兜底：
-
-- 整机开始吃紧
-- 某类请求已经拖慢整体
-- 需要优先保主链路
-
-## Spring Cloud 里最常见的接法
-
-Sentinel 常见接入点包括：
-
-- Web 接口
-- `@SentinelResource`
-- Feign
-- Gateway
-
-### 方法级资源
+方法级资源常用：
 
 ```java
-@SentinelResource(
-        value = "queryUserProfile",
-        blockHandler = "handleBlock",
-        fallback = "handleFallback"
-)
-public UserProfile queryUserProfile(Long userId) {
-    return userClient.getById(userId);
+@Service
+public class OrderService {
+
+    @SentinelResource(
+            value = "order.create",
+            blockHandler = "createOrderBlockHandler",
+            fallback = "createOrderFallback"
+    )
+    public OrderCreateResult createOrder(CreateOrderCommand command) {
+        return doCreateOrder(command);
+    }
+
+    public OrderCreateResult createOrderBlockHandler(
+            CreateOrderCommand command,
+            BlockException exception
+    ) {
+        return OrderCreateResult.rejected("系统繁忙，请稍后再试");
+    }
+
+    public OrderCreateResult createOrderFallback(
+            CreateOrderCommand command,
+            Throwable throwable
+    ) {
+        return OrderCreateResult.failed("创建订单失败");
+    }
 }
 ```
 
-这里要区分两件事：
+签名规则要记住：
 
-- `blockHandler`
-  处理被 Sentinel 规则拦住的情况
-- `fallback`
-  处理方法执行异常的情况
+| 方法 | 处理什么 | 签名要求 |
+| --- | --- | --- |
+| `blockHandler` | Sentinel 拦截产生的 `BlockException` | 参数和原方法一致，最后多一个 `BlockException` |
+| `fallback` | 原方法抛出的业务异常 | 参数和原方法一致，或最后多一个 `Throwable` |
 
-很多项目把这两个概念写混了，结果业务语义全乱。
+两个返回值类型都要和原方法一致。
 
-## `blockHandler` 和 `fallback` 的区别
+## 单独放处理类
+
+如果不想把处理方法写在业务类里，可以放到单独类。
+
+```java
+public final class OrderSentinelHandlers {
+
+    private OrderSentinelHandlers() {
+    }
+
+    public static OrderCreateResult createOrderBlockHandler(
+            CreateOrderCommand command,
+            BlockException exception
+    ) {
+        return OrderCreateResult.rejected("系统繁忙，请稍后再试");
+    }
+
+    public static OrderCreateResult createOrderFallback(
+            CreateOrderCommand command,
+            Throwable throwable
+    ) {
+        return OrderCreateResult.failed("创建订单失败");
+    }
+}
+```
+
+使用：
+
+```java
+@SentinelResource(
+        value = "order.create",
+        blockHandlerClass = OrderSentinelHandlers.class,
+        blockHandler = "createOrderBlockHandler",
+        fallbackClass = OrderSentinelHandlers.class,
+        fallback = "createOrderFallback"
+)
+public OrderCreateResult createOrder(CreateOrderCommand command) {
+    return doCreateOrder(command);
+}
+```
+
+注意：放到外部类时，处理方法必须是 `static`。
+
+## `blockHandler` 和 `fallback`
 
 ### `blockHandler`
 
-代表：
+处理 Sentinel 主动拦截：
 
-- 不是代码本身炸了
-- 是被限流 / 熔断 / 系统保护规则挡住了
+- QPS 超限
+- 线程数超限
+- 熔断打开
+- 系统保护触发
+- 热点参数限流
+
+典型返回：
+
+```java
+return ApiResult.fail("系统繁忙，请稍后再试");
+```
 
 ### `fallback`
 
-代表：
+处理业务方法自己抛出的异常：
 
-- 方法执行过程异常
-- 远程调用失败
-- 内部逻辑报错
+- 下游调用失败
+- 业务计算异常
+- 数据不存在
+- 非 Sentinel 的运行时异常
 
-这两类情况最好返回不同语义，不要全都变成一句“系统繁忙”。
+典型返回：
 
-## Sentinel 和 OpenFeign / Nacos 的关系
+```java
+return ApiResult.fail("业务处理失败");
+```
 
-这三者放在一起看，链路会很清楚：
+不要把两者混成一个概念。
 
-- Nacos 负责服务发现和配置治理
-- OpenFeign 负责声明式远程调用
-- Sentinel 负责运行时流量保护
+如果是限流，应该让用户知道“稍后再试”。
+如果是业务失败，应该返回业务失败原因。
 
-也就是说，Feign 不是高可用本身，Sentinel 才是在调用链上给系统加保护策略的那层。
+## 流控规则
 
-如果下游服务变慢，理想状态通常是：
+QPS 流控规则可以理解成：
 
-1. Feign 仍然负责发调用
-2. Sentinel 监控资源表现
-3. 达到阈值后熔断或限流
-4. 业务层做有语义的降级
+```text
+resource = order.create
+grade = QPS
+count = 100
+controlBehavior = 快速失败 / 预热 / 匀速排队
+```
 
-## 降级返回为什么不能瞎写
+适合 QPS 流控：
 
-这是 Sentinel 使用里最容易掩盖问题的地方。
+- 秒杀入口
+- 查询接口
+- 下单入口
+- 文件上传入口
 
-错误做法通常是：
+线程数流控可以理解成：
 
-- 被限流了返回空对象
-- 熔断了返回默认成功
-- 下游挂了还告诉上游“一切正常”
+```text
+同一个资源同时允许多少个线程进入
+```
 
-这会带来两个严重问题：
+适合保护慢资源：
 
-1. 业务语义错了
-2. 排障时数据污染更难发现
+- 下游慢接口
+- 数据库慢查询
+- 大文件处理
+- 外部 HTTP 调用
 
-更稳的做法是按场景分：
+经验：
 
-- 查询类接口：可返回明确降级态
-- 推荐类接口：可返回空但要可观测
-- 写操作接口：通常不能伪成功
+- 入口接口常用 QPS。
+- 慢调用链路常用线程数。
+- 先小范围压测，再定阈值，不要拍脑袋。
+
+## 熔断降级规则
+
+熔断保护的是“不稳定依赖”。
+
+常见判断维度：
+
+| 维度 | 适合场景 |
+| --- | --- |
+| 慢调用比例 | 下游变慢 |
+| 异常比例 | 下游大量失败 |
+| 异常数 | 短时间错误激增 |
+
+例如用户服务变慢：
+
+```text
+resource = remote.user.getById
+strategy = 慢调用比例
+maxRt = 500ms
+比例阈值 = 0.5
+熔断时长 = 10s
+```
+
+含义：
+
+```text
+一段时间内超过 500ms 的调用太多，就短暂熔断 user-service 查询
+```
+
+注意：
+
+- 熔断不是把问题修好。
+- 熔断只是临时保护上游线程。
+- 熔断期间返回什么，要由业务语义决定。
+
+## 热点参数限流
+
+热点参数限流适合这种场景：
+
+```text
+商品详情接口，某个 productId 被打爆
+用户查询接口，某个 userId 被频繁请求
+```
+
+资源：
+
+```java
+@SentinelResource(value = "product.detail")
+public ProductVO getDetail(Long productId) {
+    return productService.getDetail(productId);
+}
+```
+
+热点参数规则一般会指定：
+
+```text
+资源名 = product.detail
+参数索引 = 0
+单机阈值 = 100
+```
+
+含义：
+
+```text
+同一个 productId 的访问超过阈值，就限流
+```
+
+不要把热点参数限流当普通接口限流用。
+它解决的是“少数参数特别热”的问题。
+
+## 系统保护
+
+系统规则保护的是整机：
+
+- Load
+- CPU
+- 平均 RT
+- 入口 QPS
+- 线程数
+
+它不是业务接口规则。
+
+适合做最后保护线：
+
+```text
+系统负载过高时，整体减少入口流量
+```
+
+不要把系统保护当成业务限流。
+业务限流应该落到明确资源上。
+
+## OpenFeign 接 Sentinel
+
+如果项目里 OpenFeign 接入 Sentinel，典型配置：
+
+```yaml
+feign:
+  sentinel:
+    enabled: true
+```
+
+Feign fallback 要非常谨慎：
+
+```java
+@FeignClient(
+        name = "user-service",
+        path = "/api/users",
+        fallbackFactory = UserClientFallbackFactory.class
+)
+public interface UserClient {
+
+    @GetMapping("/{id}")
+    UserProfileResponse getById(@PathVariable("id") Long id);
+}
+```
+
+```java
+@Component
+public class UserClientFallbackFactory implements FallbackFactory<UserClient> {
+
+    @Override
+    public UserClient create(Throwable cause) {
+        return new UserClient() {
+            @Override
+            public UserProfileResponse getById(Long id) {
+                throw new RemoteServiceUnavailableException("用户服务不可用", cause);
+            }
+        };
+    }
+}
+```
+
+不要在关键链路里返回假用户：
+
+```java
+return new UserProfileResponse(id, "默认用户", "", 1);
+```
+
+除非这个接口是弱依赖展示数据。
+
+## 规则持久化到 Nacos
+
+Dashboard 里手动配规则适合调试，不适合生产长期使用。
+
+生产更推荐接动态数据源，例如 Nacos：
+
+```xml
+<dependency>
+    <groupId>com.alibaba.csp</groupId>
+    <artifactId>sentinel-datasource-nacos</artifactId>
+</dependency>
+```
+
+配置流控规则：
+
+```yaml
+spring:
+  cloud:
+    sentinel:
+      datasource:
+        flow-rules:
+          nacos:
+            server-addr: 127.0.0.1:8848
+            namespace: dev
+            group-id: SENTINEL_GROUP
+            data-id: order-service-flow-rules.json
+            data-type: json
+            rule-type: flow
+```
+
+配置熔断规则：
+
+```yaml
+spring:
+  cloud:
+    sentinel:
+      datasource:
+        degrade-rules:
+          nacos:
+            server-addr: 127.0.0.1:8848
+            namespace: dev
+            group-id: SENTINEL_GROUP
+            data-id: order-service-degrade-rules.json
+            data-type: json
+            rule-type: degrade
+```
+
+常见 `rule-type`：
+
+| rule-type | 说明 |
+| --- | --- |
+| `flow` | 流控规则 |
+| `degrade` | 熔断降级规则 |
+| `system` | 系统保护规则 |
+| `param-flow` | 热点参数规则 |
+| `authority` | 授权规则 |
+
+不要把规则只配在控制台内存里。
+应用重启、Dashboard 重启、环境迁移时都容易丢。
+
+## Nacos 规则示例
+
+`order-service-flow-rules.json`：
+
+```json
+[
+  {
+    "resource": "order.create",
+    "limitApp": "default",
+    "grade": 1,
+    "count": 100,
+    "strategy": 0,
+    "controlBehavior": 0
+  }
+]
+```
+
+`order-service-degrade-rules.json`：
+
+```json
+[
+  {
+    "resource": "remote.user.getById",
+    "grade": 0,
+    "count": 500,
+    "timeWindow": 10,
+    "minRequestAmount": 20,
+    "statIntervalMs": 1000,
+    "slowRatioThreshold": 0.5
+  }
+]
+```
+
+规则字段和 Sentinel 版本有关，项目里要以当前依赖版本为准。
+不要从网上随手复制一份旧 JSON 就上生产。
+
+## 降级返回怎么设计
+
+降级返回要按业务分级。
+
+### 可以降级展示
+
+```java
+public ProductRecommendVO recommendBlockHandler(Long userId, BlockException exception) {
+    return ProductRecommendVO.empty("推荐服务繁忙");
+}
+```
+
+适合：
+
+- 推荐
+- 画像
+- 标签
+- 非核心展示字段
+
+### 必须明确失败
+
+```java
+public PayResult payBlockHandler(PayCommand command, BlockException exception) {
+    throw new BizException("支付服务繁忙，请稍后重试");
+}
+```
+
+适合：
+
+- 支付
+- 扣库存
+- 创建订单
+- 权限判断
+- 审批状态变更
+
+关键链路不要假成功。
 
 ## 常见坑
 
-### 1. 资源定义太随意
+### 1. 资源名乱写
 
-今天按 URL，明天按方法名，后天按业务中文名，最后规则根本没法统一治理。
+资源名一旦乱，规则、监控、排查都会乱。
 
-### 2. 规则拍脑袋
+### 2. `blockHandler` 签名不对
 
-例如：
+必须返回值一致，参数一致，最后多一个 `BlockException`。
 
-- QPS 设 100
-- RT 设 200ms
-- 异常比例设 20%
+### 3. `fallback` 和 `blockHandler` 混用
 
-但没人知道这些数字怎么来的。  
-没有监控基线的规则，通常不是太松就是太紧。
+限流熔断走 `blockHandler`，业务异常走 `fallback`。
 
-### 3. 把 Sentinel 当成完整高可用方案
+### 4. Dashboard 配完就以为生产安全
 
-它能挡风险，但不能代替：
+Dashboard 配置不等于持久化。生产规则要接数据源。
 
-- 重试策略
-- 消息补偿
-- 幂等设计
-- 降级后的业务闭环
+### 5. 所有接口都配降级
 
-### 4. 所有接口都配降级
+不是所有接口都适合降级。核心写链路应该明确失败。
 
-结果整个系统到处是“默认值”“空列表”“稍后再试”，真正问题反而看不见。
+### 6. 阈值拍脑袋
 
-### 5. `blockHandler` 和 `fallback` 混用
+没有压测和线上指标，阈值很容易过松或过紧。
 
-最后业务日志里根本看不出：
+### 7. 把 Sentinel 当补偿系统
 
-- 是规则触发了
-- 还是代码自己炸了
+Sentinel 只负责运行时保护。
+重试、补偿、对账、最终一致性要业务系统自己设计。
 
-## 一种比较推荐的项目实践
+### 8. Feign fallback 返回假对象
 
-如果是普通 Spring Cloud 项目，我会这样落：
+假对象会污染业务判断，尤其是权限、支付、库存这类链路。
 
-1. 先统一资源命名方式。
-2. 先给核心入口接口做基础流控。
-3. 给明显依赖下游的慢资源加熔断保护。
-4. 只有确认存在热点分布时才上热点参数限流。
-5. `blockHandler` 和 `fallback` 分开写、分开观测。
-6. 阈值从监控数据里来，不靠猜。
-7. 写操作链路慎用“伪成功式降级”。
+## 项目检查清单
+
+接 Sentinel 时检查：
+
+- 资源名是否稳定？
+- 哪些是入口资源，哪些是下游依赖资源？
+- 流控规则用 QPS 还是线程数？
+- 熔断规则保护哪个下游？
+- 热点参数限流是否真的需要？
+- `blockHandler` 签名是否正确？
+- `fallback` 是否只处理业务异常？
+- 降级返回是否有业务语义？
+- 核心写链路有没有假成功？
+- 规则是否持久化到 Nacos / 其他数据源？
+- 是否有指标支撑阈值？
+- 是否有监控成功率、限流数、熔断数、RT？
 
 ## 最后记一句话
 
-**Sentinel 的核心价值，不是“帮接口限流”，而是让系统在流量异常和依赖退化时仍然可控。**
+Sentinel 的核心不是“配一个 QPS 阈值”，而是：
 
-只要你一直把它看成“运行时保护层”，而不是“报错时随手兜一下”的工具，这篇就抓住重点了。
+**把系统里的关键资源定义清楚，再用流控、熔断、热点参数和系统保护给它们加运行时保护边界。**
+
+## 参考
+
+- [Sentinel 注解支持](https://sentinelguard.io/zh-cn/docs/annotation-support.html)
+- [Sentinel Resource and Rule](https://sentinelguard.io/en-us/docs/basic-api-resource-rule.html)
+- [Spring Cloud Alibaba Sentinel](https://github.com/alibaba/spring-cloud-alibaba/wiki/sentinel)

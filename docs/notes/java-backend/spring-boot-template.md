@@ -5,74 +5,23 @@ sidebarTitle: Spring Boot 项目骨架
 
 # Spring Boot 项目骨架
 
-如果一开始 Spring Boot 项目骨架没立好，后面最常见的结果就是：
+> 新后端项目先把骨架搭对：包结构、配置、异常、校验、日志、健康检查。
 
-- Controller 越写越重
-- DTO / Entity 混在一起
-- 日志、异常、校验、traceId 到处散着写
-- 配置文件膨胀
-- 新同事一进来根本看不懂目录
+## 先给结论
 
-所以这篇不再保留成“占位模板”，而是直接给一版更实用的项目起手骨架。
+一个 Spring Boot 项目起步先定这些：
 
-## 先说结论
+- 包结构按业务和分层稳定下来。
+- DTO / Entity / VO 分开。
+- Controller 只处理 HTTP 入参和出参。
+- Service 放业务语义和事务。
+- Mapper / Repository 只做数据访问。
+- 全局异常、参数校验、日志追踪一开始就接。
+- 配置按环境拆，不把密码、地址写死在代码里。
 
-普通 Java 后端业务系统，我更推荐一开始就把这几层立住：
+## 最小依赖
 
-1. `controller`
-2. `service`
-3. `mapper / repository`
-4. `domain / entity`
-5. `dto / vo`
-6. `config / common / exception`
-
-再补齐这几件基础设施：
-
-- 统一返回
-- 全局异常处理
-- 参数校验
-- traceId
-- 环境配置拆分
-- 健康检查
-
-一句话就是：
-
-**Spring Boot 项目最重要的不是能启动，而是从第一天就能长。**
-
-## 一版比较稳的目录结构
-
-```text
-src/main/java/com/example/app
-├─ controller
-├─ service
-├─ service/impl
-├─ mapper
-├─ entity
-├─ dto
-├─ vo
-├─ config
-├─ common
-│  ├─ result
-│  ├─ enums
-│  ├─ utils
-│  └─ constants
-├─ exception
-└─ infrastructure
-   ├─ redis
-   ├─ mq
-   └─ client
-```
-
-这个结构的核心思想是：
-
-- Controller 只接协议层
-- Service 只接业务层
-- Mapper 只接持久化层
-- Redis / MQ / OpenFeign 这类外部依赖收进基础设施层
-
-## Maven 依赖一开始先别堆太多
-
-一个常见的基础依赖集合大概够用：
+Web 项目先别堆太多依赖：
 
 ```xml
 <dependencies>
@@ -80,86 +29,197 @@ src/main/java/com/example/app
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-web</artifactId>
     </dependency>
+
     <dependency>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-validation</artifactId>
     </dependency>
+
     <dependency>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-actuator</artifactId>
     </dependency>
+
     <dependency>
         <groupId>org.springframework.boot</groupId>
-        <artifactId>spring-boot-starter-aop</artifactId>
-    </dependency>
-    <dependency>
-        <groupId>org.projectlombok</groupId>
-        <artifactId>lombok</artifactId>
-        <optional>true</optional>
+        <artifactId>spring-boot-starter-test</artifactId>
+        <scope>test</scope>
     </dependency>
 </dependencies>
 ```
 
-后面按需要再补：
+按需再加：
 
-- MyBatis-Plus / JPA
-- Redis
-- OpenFeign
-- Nacos
-- Sentinel
-- RabbitMQ
+- 数据库：`spring-boot-starter-jdbc`、`mybatis-plus-spring-boot3-starter`。
+- Redis：`spring-boot-starter-data-redis`。
+- 安全：`spring-boot-starter-security`。
+- OpenAPI：`springdoc-openapi-starter-webmvc-ui`。
 
-不要项目一创建就把半个 Spring Cloud 都堆进去。
+原则：项目没用到的 starter 不要提前加，依赖越多，自动配置变量越多。
+
+## 推荐包结构
+
+按“业务模块 + 分层”放：
+
+```text
+com.example.mall
+├── MallApplication.java
+├── common
+│   ├── api
+│   ├── error
+│   ├── exception
+│   └── web
+├── config
+├── user
+│   ├── controller
+│   ├── service
+│   ├── mapper
+│   ├── entity
+│   ├── dto
+│   ├── vo
+│   └── converter
+└── order
+    ├── controller
+    ├── service
+    ├── mapper
+    ├── entity
+    ├── dto
+    ├── vo
+    └── converter
+```
+
+小项目也可以先按分层：
+
+```text
+controller
+service
+mapper
+entity
+dto
+vo
+config
+common
+```
+
+但项目一旦模块多了，推荐切到“业务模块优先”，不然所有 Controller 堆在一起很快乱。
 
 ## 启动类保持干净
 
 ```java
 @SpringBootApplication
-public class GrimoireApplication {
+public class MallApplication {
 
     public static void main(String[] args) {
-        SpringApplication.run(GrimoireApplication.class, args);
+        SpringApplication.run(MallApplication.class, args);
     }
 }
 ```
 
-启动类不要直接塞：
+启动类里不要塞：
 
-- 一堆 `@Bean`
-- 业务配置
-- 杂乱扫描路径
+- 业务初始化逻辑。
+- Bean 手动注册大杂烩。
+- 一堆 `@EnableXxx`。
+- 静态工具方法。
 
-这些应该回到 `config` 包里。
-
-## 统一返回一开始就定
-
-### 返回结构
+初始化逻辑放 `ApplicationRunner`：
 
 ```java
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
-public class ApiResponse<T> {
+@Component
+public class StartupChecker implements ApplicationRunner {
 
-    private Integer code;
-    private String message;
-    private T data;
-
-    public static <T> ApiResponse<T> success(T data) {
-        return new ApiResponse<>(0, "success", data);
-    }
-
-    public static <T> ApiResponse<T> fail(Integer code, String message) {
-        return new ApiResponse<>(code, message, null);
+    @Override
+    public void run(ApplicationArguments args) {
+        // 检查必要配置、缓存预热、字典加载
     }
 }
 ```
 
-### Controller 写法
+## 配置文件拆法
+
+`application.yml` 放公共配置：
+
+```yaml
+spring:
+  application:
+    name: mall-api
+  profiles:
+    active: dev
+
+server:
+  port: 8080
+  servlet:
+    context-path: /api
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never
+```
+
+`application-dev.yml` 放本地配置：
+
+```yaml
+spring:
+  datasource:
+    url: jdbc:mysql://localhost:3306/mall_dev
+    username: root
+    password: root
+
+logging:
+  level:
+    com.example.mall: debug
+```
+
+`application-prod.yml` 放生产占位：
+
+```yaml
+spring:
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+
+logging:
+  level:
+    root: info
+```
+
+注意：
+
+- 生产密码走环境变量、配置中心、密钥系统，不进 Git。
+- `spring.profiles.active` 在线上通常由启动参数或环境变量控制。
+- 不同环境只改配置，不改代码。
+
+## 统一返回结构
+
+```java
+public record ApiResult<T>(
+    String code,
+    String message,
+    T data,
+    String traceId
+) {
+
+    public static <T> ApiResult<T> ok(T data) {
+        return new ApiResult<>("0", "OK", data, TraceId.get());
+    }
+
+    public static <T> ApiResult<T> fail(String code, String message) {
+        return new ApiResult<>(code, message, null, TraceId.get());
+    }
+}
+```
+
+Controller 示例：
 
 ```java
 @RestController
-@RequestMapping("/api/users")
+@RequestMapping("/users")
 public class UserController {
 
     private final UserService userService;
@@ -168,78 +228,147 @@ public class UserController {
         this.userService = userService;
     }
 
-    @GetMapping("/{id}")
-    public ApiResponse<UserVO> getById(@PathVariable Long id) {
-        return ApiResponse.success(userService.getById(id));
+    @PostMapping
+    public ApiResult<Long> create(@Valid @RequestBody CreateUserRequest request) {
+        Long userId = userService.createUser(request.toCommand());
+        return ApiResult.ok(userId);
     }
 }
 ```
 
-这层统一之后，前后端协作和错误治理都会简单很多。
+如果项目用了统一响应包装器，也要保留“文件下载、SSE、第三方回调”这类不包装的出口。
 
-## DTO / Entity / VO 一定要分开
+## 参数校验
 
-很多项目烂掉，就是从“先偷懒直接复用 Entity”开始的。
-
-### DTO
-
-面向请求入参：
+请求 DTO：
 
 ```java
-@Data
-public class CreateUserRequest {
+public record CreateUserRequest(
+    @NotBlank(message = "用户名不能为空")
+    @Size(max = 30, message = "用户名不能超过30个字符")
+    String username,
 
-    @NotBlank(message = "username cannot be blank")
-    private String username;
+    @NotBlank(message = "手机号不能为空")
+    @Pattern(regexp = "^1\\d{10}$", message = "手机号格式不正确")
+    String mobile
+) {
 
-    @NotBlank(message = "password cannot be blank")
-    private String password;
+    public CreateUserCommand toCommand() {
+        return new CreateUserCommand(username, mobile);
+    }
 }
 ```
 
-### Entity
-
-面向数据库：
+Controller 必须加 `@Valid`：
 
 ```java
-@Data
-public class UserEntity {
-    private Long id;
-    private String username;
-    private String password;
-    private Integer status;
-    private LocalDateTime createTime;
+public ApiResult<Long> create(@Valid @RequestBody CreateUserRequest request) {
+    return ApiResult.ok(userService.createUser(request.toCommand()));
 }
 ```
 
-### VO
-
-面向接口返回：
+Service 里继续做业务校验：
 
 ```java
-@Data
-@Builder
-public class UserVO {
-    private Long id;
-    private String username;
-    private Integer status;
+if (userRepository.existsByMobile(command.mobile())) {
+    throw new BizException(ErrorCode.USER_MOBILE_EXISTS);
 }
 ```
 
-这样你后面改表结构，不会直接把 API 全拖着跑。
+区分两类校验：
 
-## Service 层只放业务动作
+- 格式校验：放 DTO 注解。
+- 业务校验：放 Service。
+
+## 全局异常处理
+
+业务异常：
+
+```java
+public class BizException extends RuntimeException {
+
+    private final ErrorCode errorCode;
+
+    public BizException(ErrorCode errorCode) {
+        super(errorCode.message());
+        this.errorCode = errorCode;
+    }
+
+    public ErrorCode errorCode() {
+        return errorCode;
+    }
+}
+```
+
+错误码：
+
+```java
+public enum ErrorCode {
+    USER_MOBILE_EXISTS("USER_001", "手机号已存在"),
+    PARAM_INVALID("COMMON_001", "请求参数不合法"),
+    SYSTEM_ERROR("COMMON_999", "系统繁忙，请稍后再试");
+
+    private final String code;
+    private final String message;
+
+    ErrorCode(String code, String message) {
+        this.code = code;
+        this.message = message;
+    }
+
+    public String code() {
+        return code;
+    }
+
+    public String message() {
+        return message;
+    }
+}
+```
+
+异常处理器：
+
+```java
+@RestControllerAdvice
+public class GlobalExceptionHandler {
+
+    @ExceptionHandler(BizException.class)
+    public ApiResult<Void> handleBizException(BizException exception) {
+        ErrorCode errorCode = exception.errorCode();
+        return ApiResult.fail(errorCode.code(), errorCode.message());
+    }
+
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ApiResult<Void> handleValidException(MethodArgumentNotValidException exception) {
+        String message = exception.getBindingResult()
+            .getFieldErrors()
+            .stream()
+            .findFirst()
+            .map(DefaultMessageSourceResolvable::getDefaultMessage)
+            .orElse(ErrorCode.PARAM_INVALID.message());
+        return ApiResult.fail(ErrorCode.PARAM_INVALID.code(), message);
+    }
+
+    @ExceptionHandler(Exception.class)
+    public ApiResult<Void> handleException(Exception exception) {
+        log.error("unhandled exception, traceId={}", TraceId.get(), exception);
+        return ApiResult.fail(ErrorCode.SYSTEM_ERROR.code(), ErrorCode.SYSTEM_ERROR.message());
+    }
+}
+```
+
+注意：最后一个 `Exception` 要打完整日志，但不要把堆栈返回给前端。
+
+## Service 层模板
 
 ```java
 public interface UserService {
 
-    UserVO getById(Long id);
+    Long createUser(CreateUserCommand command);
 
-    Long create(CreateUserRequest request);
+    UserVO getUser(Long userId);
 }
 ```
-
-实现类里才写流程：
 
 ```java
 @Service
@@ -252,158 +381,112 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    public UserVO getById(Long id) {
-        UserEntity entity = userMapper.selectById(id);
-        if (entity == null) {
-            throw new BizException(40401, "user not found");
+    @Transactional(rollbackFor = Exception.class)
+    public Long createUser(CreateUserCommand command) {
+        if (existsByMobile(command.mobile())) {
+            throw new BizException(ErrorCode.USER_MOBILE_EXISTS);
         }
-        return UserVO.builder()
-                .id(entity.getId())
-                .username(entity.getUsername())
-                .status(entity.getStatus())
-                .build();
+
+        UserEntity user = UserEntity.create(command.username(), command.mobile());
+        userMapper.insert(user);
+        return user.getId();
     }
 
-    @Override
-    public Long create(CreateUserRequest request) {
-        UserEntity entity = new UserEntity();
-        entity.setUsername(request.getUsername());
-        entity.setPassword(hashPassword(request.getPassword()));
-        entity.setStatus(1);
-        userMapper.insert(entity);
-        return entity.getId();
+    private boolean existsByMobile(String mobile) {
+        return userMapper.countByMobile(mobile) > 0;
     }
 }
 ```
 
-关键是：
+Service 里适合放：
 
-- Controller 不写业务
-- Service 不直接暴露数据库结构
+- 业务校验。
+- 状态流转。
+- 事务边界。
+- 多表协作。
+- 领域事件 / MQ 发送入口。
 
-## 全局异常处理一定要先补
+Service 里不适合放：
 
-```java
-@RestControllerAdvice
-public class GlobalExceptionHandler {
+- HTTP 参数解析。
+- Servlet 对象。
+- SQL 字符串硬拼。
+- 返回前端专用结构的大量拼装。
 
-    @ExceptionHandler(BizException.class)
-    public ApiResponse<Void> handleBizException(BizException e) {
-        return ApiResponse.fail(e.getCode(), e.getMessage());
-    }
+## traceId 和日志
 
-    @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ApiResponse<Void> handleValidationException(MethodArgumentNotValidException e) {
-        String message = e.getBindingResult()
-                .getFieldErrors()
-                .stream()
-                .findFirst()
-                .map(DefaultMessageSourceResolvable::getDefaultMessage)
-                .orElse("invalid request");
-        return ApiResponse.fail(40000, message);
-    }
-
-    @ExceptionHandler(Exception.class)
-    public ApiResponse<Void> handleException(Exception e) {
-        return ApiResponse.fail(50000, "internal server error");
-    }
-}
-```
-
-没有这层，项目很快会出现：
-
-- Controller 自己 try/catch
-- 错误结构不统一
-- 前端只能猜哪些错误是业务错误
-
-## traceId 最好在一开始就放进去
-
-一个很小但很值的过滤器：
+请求入口生成 `traceId`：
 
 ```java
-@Component
 public class TraceIdFilter extends OncePerRequestFilter {
 
-    @Override
-    protected void doFilterInternal(
-            HttpServletRequest request,
-            HttpServletResponse response,
-            FilterChain filterChain
-    ) throws ServletException, IOException {
-        String traceId = Optional.ofNullable(request.getHeader("X-Trace-Id"))
-                .filter(StringUtils::hasText)
-                .orElse(UUID.randomUUID().toString().replace("-", ""));
+    private static final String TRACE_ID = "traceId";
 
-        MDC.put("traceId", traceId);
+    @Override
+    protected void doFilterInternal(HttpServletRequest request,
+                                    HttpServletResponse response,
+                                    FilterChain filterChain)
+            throws ServletException, IOException {
+        String traceId = Optional.ofNullable(request.getHeader("X-Trace-Id"))
+            .filter(StringUtils::hasText)
+            .orElse(UUID.randomUUID().toString().replace("-", ""));
+
+        MDC.put(TRACE_ID, traceId);
         response.setHeader("X-Trace-Id", traceId);
         try {
             filterChain.doFilter(request, response);
         } finally {
-            MDC.remove("traceId");
+            MDC.remove(TRACE_ID);
         }
     }
 }
 ```
 
-这会让你后面排查问题轻松很多。
+日志格式里带上：
 
-## 配置文件建议先按环境拆
-
-### `application.yml`
-
-```yaml
-spring:
-  application:
-    name: grimoire-demo
-
-server:
-  port: 8080
+```properties
+logging.pattern.level=%5p [traceId:%X{traceId}]
 ```
 
-### `application-dev.yml`
+排查线上问题时，`traceId` 比“你帮我看看刚才那个请求”靠谱很多。
 
-```yaml
-spring:
-  datasource:
-    url: jdbc:mysql://127.0.0.1:3306/grimoire
-    username: root
-    password: 123456
-```
+## 健康检查
 
-### `application-prod.yml`
-
-生产里只放生产参数，不要把敏感值和默认开发值混在一起。
-
-## 健康检查和基础观测不要最后补
-
-至少先把 actuator 打开：
+最小配置：
 
 ```yaml
 management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics
+        include: health,info
+  endpoint:
+    health:
+      show-details: never
 ```
 
-这样你至少能有：
+生产建议：
 
-- 健康检查
-- 基础 metrics
+- `/actuator/health` 可以给负载均衡探活。
+- 其他 actuator 端点不要随便暴露公网。
+- 如果暴露 `metrics`、`env`、`configprops`，必须加鉴权或内网限制。
+- 自定义健康检查只做轻量判断，不要每次探活跑大 SQL。
 
-## 一种比较推荐的初始化检查清单
+## 新项目检查清单
 
-新项目创建后，第一周内最好确认这些都已经有：
+- [ ] 包结构已经统一，后续模块按同一规则放。
+- [ ] `application-dev.yml`、`application-prod.yml` 已拆分。
+- [ ] 敏感配置没有提交到 Git。
+- [ ] DTO / Entity / VO 分开。
+- [ ] Controller 加了 `@Valid`。
+- [ ] 全局异常处理能覆盖参数异常、业务异常、未知异常。
+- [ ] 返回结构包含 `code`、`message`、`data`、`traceId`。
+- [ ] Service 方法有业务语义，不只是 Mapper 透传。
+- [ ] 写操作需要事务的地方已加 `@Transactional(rollbackFor = Exception.class)`。
+- [ ] 日志里能看到 `traceId`。
+- [ ] actuator 只暴露必要端点。
 
-1. 统一返回
-2. 全局异常处理
-3. 参数校验
-4. traceId
-5. 环境配置拆分
-6. Actuator 健康检查
-7. 基础日志格式
-8. 数据库访问层约束
+## 参考
 
-## 最后记一句话
-
-**Spring Boot 项目的“模板”不该只是目录示意图，而应该是一套能让项目从第一个月到第十二个月都不轻易变形的最小骨架。**
+- [Spring Boot 外部化配置](https://docs.spring.io/spring-boot/how-to/properties-and-configuration.html)
+- [Spring Boot Actuator Endpoints](https://docs.spring.io/spring-boot/reference/actuator/endpoints.html)

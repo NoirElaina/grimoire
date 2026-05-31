@@ -5,484 +5,626 @@ sidebarTitle: 01 缓存设计
 
 # Redis 基础使用与缓存设计
 
-Redis 不是“一个很快的 Map”，它本质上是**以内存为核心、支持多种数据结构和过期语义的基础设施**。  
-如果项目里只是把它当“随手缓存一下”的工具，很快就会遇到这些问题：
+> Redis 笔记不要写成命令大全，重点是：什么时候用、key 怎么设计、TTL 怎么定、一致性怎么兜。
 
-- 缓存和数据库不一致
-- 热点 key 被打爆
-- 过期瞬间把数据库打穿
-- 把 Redis 当消息队列、锁、计数器乱用
-- key 命名混乱，后面根本管不住
+## 先给结论
 
-所以 Redis 真正难的不是“怎么 set/get”，而是**什么时候该用、用哪种结构、如何控制一致性和风险**。
+Java 后端里 Redis 最常见的用法：
 
-## 先说结论
+- 缓存：热点查询、配置、字典、用户基础信息。
+- 短状态：验证码、登录态、幂等 key、临时任务状态。
+- 计数：阅读量、点赞数、限流计数器。
+- 排行榜：积分榜、热度榜、TopN。
+- 协作：轻量锁、去重、短时间窗口控制。
 
-普通 Java 后端项目里，Redis 更稳的用法通常是：
+使用前先问四个问题：
 
-1. 缓存热点读多写少的数据。
-2. 做短生命周期状态，例如验证码、登录态、限流计数。
-3. 用清晰的 key 规范，而不是到处随手拼字符串。
-4. 明确过期时间、空值缓存、随机过期和重建策略。
-5. 分清“缓存”“分布式锁”“计数器”“队列”这些用途，不要混着设计。
-6. 涉及一致性、扣减、事务时，不要迷信 Redis 单独解决一切。
+- Redis 挂了，业务能不能降级？
+- 这个 key 有没有 TTL？
+- 数据源到底是 MySQL 还是 Redis？
+- 写入 MySQL 后，缓存怎么失效？
 
-一句话就是：
+如果这四个问题答不上来，先别急着 `set`。
 
-**Redis 很强，但最稳的姿势是把它当“高性能辅助层”，不是主业务真相来源。**
+## 适合和不适合
 
-## 它到底适合解决什么
+| 场景 | 建议 |
+| --- | --- |
+| 高频读、低频写 | 适合缓存 |
+| 数据允许短暂不一致 | 适合缓存 |
+| 只需要短时间状态 | 适合 Redis |
+| 需要排序 TopN | 适合 `ZSet` |
+| 强一致余额、库存最终扣减 | 不要只靠 Redis |
+| 可靠消息、死信、重试、堆积治理 | 优先 MQ |
+| 大对象、长文本、文件内容 | 不适合 Redis |
+| 全量数据镜像 | 不适合 Redis |
 
-Redis 最适合的场景通常有这些：
+一句话：Redis 扛热点和短状态，MySQL 扛最终事实。
 
-- 热点数据缓存
-- 会话和短状态保存
-- 分布式限流
-- 排行榜和计数
-- 延迟过期类状态
-- 简单消息通知或轻量异步解耦
+## 数据结构怎么选
 
-不太适合直接拿来承担的，是这些：
+| 数据结构 | 典型用途 | 备注 |
+| --- | --- | --- |
+| `String` | 缓存 JSON、计数器、验证码、锁值 | 最常用，注意 value 不要太大 |
+| `Hash` | 用户对象字段、配置项、购物车 | 适合对象局部字段读写 |
+| `List` | 简单队列、最近记录 | 可靠消费不如 MQ |
+| `Set` | 去重、标签、关注集合 | 适合无序集合 |
+| `ZSet` | 排行榜、延迟任务、时间线 | score 设计要稳定 |
+| `Bitmap` | 签到、活跃标记 | 适合布尔状态 |
+| `HyperLogLog` | UV 粗略统计 | 有误差，不能当精准计数 |
+| `Stream` | 轻量消息流 | 有消费组，但复杂业务仍优先 MQ |
 
-- 复杂关系查询
-- 长期可靠主存储
-- 强事务核心账本
-- 没有补偿机制的关键流程状态
+选型原则：
 
-也就是说，Redis 擅长的是：
+- 能用简单结构就不用复杂结构。
+- value 越大，序列化、网络传输、阻塞风险越高。
+- 需要原子操作时，优先用 Redis 原生命令或 Lua。
+- 需要可靠流程时，不要把 Redis 硬当 MQ。
 
-- 快
-- 简单结构
-- 短状态
-- 高并发读写
+## key 命名
 
-不擅长的是：
+推荐格式：
 
-- 强一致复杂业务模型
+```text
+业务系统:模块:对象:标识
+```
 
-## 最常用的数据结构怎么选
+示例：
 
-### `String`
+```text
+mall:user:profile:10001
+mall:order:detail:202406010001
+mall:auth:refresh-token:device-001
+mall:rate-limit:login:13800138000
+mall:rank:product-hot:20240601
+```
 
-最常用，适合：
+多租户：
 
-- 缓存 JSON
-- 验证码
-- token
-- 计数值
+```text
+mall:{tenant_001}:user:profile:10001
+```
 
-例如：
+Redis Cluster 里 `{}` 是 hash tag，同一 tag 的 key 会落到同一 slot。只有确实需要多 key 原子操作时再这么设计。
 
-- `user:profile:1001`
-- `sms:code:13800138000`
+Java 里不要到处手写字符串：
 
-### `Hash`
+```java
+public final class RedisKeys {
 
-适合一个对象多个小字段：
+    private static final String APP = "mall";
 
-- 用户简要资料
-- 配置信息
-- 统计字段
+    private RedisKeys() {
+    }
 
-优点是可以只改其中一个字段，不必整体覆盖。
+    public static String userProfile(Long userId) {
+        return APP + ":user:profile:" + userId;
+    }
 
-### `List`
+    public static String loginLimit(String mobile) {
+        return APP + ":rate-limit:login:" + mobile;
+    }
+}
+```
+
+key 设计检查：
+
+- 是否包含业务前缀。
+- 是否包含租户 / 环境隔离。
+- 是否有明确对象和 ID。
+- 是否能从 key 看出用途。
+- 是否避免把用户输入原样拼成长 key。
 
-适合简单队列、消息暂存。  
-但如果你已经进入“可靠消费、重试、堆积治理”的场景，通常更适合 MQ，而不是 Redis List。
+## TTL 设计
 
-### `Set`
+不要随手写一个过期时间。TTL 要按业务定：
 
-适合：
+| 数据 | TTL 建议 |
+| --- | --- |
+| 验证码 | 3～5 分钟 |
+| 登录失败计数 | 5～30 分钟 |
+| 用户基础信息缓存 | 5～30 分钟 |
+| 商品详情缓存 | 5～60 分钟 |
+| 空值缓存 | 30 秒～5 分钟 |
+| 排行榜日榜 | 到当天结束后再多留一段 |
+| 分布式锁 | 按业务耗时设置，必须有过期 |
+
+给缓存 TTL 加随机抖动，避免同一时间大量过期：
+
+```java
+Duration ttl = Duration.ofMinutes(10)
+    .plusSeconds(ThreadLocalRandom.current().nextInt(30, 180));
+redisTemplate.opsForValue().set(key, value, ttl);
+```
 
-- 去重
-- 标签集合
-- 共同好友 / 交并差这类集合操作
-
-### `ZSet`
-
-适合：
-
-- 排行榜
-- 分数排序
-- 延迟任务时间轴
-
-如果你的需求里有“按分数排序并取前 N”，通常先想到的就应该是 `ZSet`。
-
-## Java 项目里最常见的 4 类用法
-
-### 1. 缓存
-
-最常见，也是最值得先写稳的一类。
-
-例如查用户资料：
-
-1. 先查 Redis
-2. 没有再查数据库
-3. 查到后回填 Redis
-
-这就是典型的 `cache aside` 模式。
-
-### 2. 分布式状态
-
-例如：
-
-- 短信验证码
-- 登录会话
-- 防重复提交 token
-- 一次性操作标记
-
-这些状态通常：
-
-- 生命周期短
-- 不值得专门建表
-- 对访问速度敏感
-
-### 3. 计数与限流
-
-例如：
-
-- 接口每分钟访问次数
-- 用户每天发送短信次数
-- 某活动库存预热计数
-
-这类需求 Redis 很顺手，但要认真设计时间窗口和原子性。
-
-### 4. 分布式协作
-
-例如：
-
-- 分布式锁
-- 简单延迟任务
-- 任务抢占标记
-
-这类是 Redis 最容易被滥用的区域。  
-能不能用，不取决于“Redis 支不支持”，而取决于你的业务能否接受它的边界。
-
-## 缓存最推荐先掌握的模式：`Cache Aside`
-
-这也是业务系统里最常见、最稳的一种：
-
-### 读
-
-1. 查缓存
-2. 未命中查数据库
-3. 回填缓存
-
-### 写
-
-1. 先更新数据库
-2. 再删除缓存
-
-这里更推荐“更新 DB 后删缓存”，而不是“更新 DB 后顺手 set 新缓存”。  
-因为直接回写缓存很容易把旧数据、并发覆盖和序列化问题一起带进来。
-
-## 为什么删除缓存比更新缓存更常见
-
-因为缓存的本质是副本。
-
-很多业务里真正可靠的顺序是：
-
-1. 先以数据库为准完成写入
-2. 让旧缓存失效
-3. 下次读请求自然回源重建
-
-这会比“每次写完都精确更新所有缓存副本”简单很多。
-
-当然它也不是银弹，因为中间仍然会有短暂不一致窗口。
-
-## 缓存穿透、击穿、雪崩分别是什么
-
-这三件事几乎是 Redis 面试和线上问题的高频项，但很多人只会背定义，不会落地。
+判断 key 是否应该永不过期：
+
+- 基础配置可以长期缓存，但要有主动刷新机制。
+- 热点业务数据不建议永久缓存。
+- 临时状态必须有 TTL。
+- 锁、幂等 key、验证码必须有 TTL。
+
+## Cache Aside 模式
+
+最常用模式：应用自己维护缓存。
+
+读流程：
+
+```text
+1. 查 Redis
+2. 命中：直接返回
+3. 未命中：查 MySQL
+4. MySQL 查到：写 Redis，设置 TTL
+5. MySQL 未查到：写空值缓存，设置短 TTL
+```
+
+写流程：
+
+```text
+1. 开事务更新 MySQL
+2. 事务提交成功
+3. 删除 Redis 缓存
+4. 下一次读取回源 MySQL 并回填
+```
+
+为什么常见做法是“删缓存”而不是“更新缓存”：
+
+- 更新缓存容易漏字段。
+- 多个写请求并发时，旧值可能覆盖新值。
+- 删除后重新加载更简单。
+- 缓存结构可能不是单表结构。
+
+## 缓存读取代码
+
+示例：
+
+```java
+public UserProfileVO getUserProfile(Long userId) {
+    String key = RedisKeys.userProfile(userId);
+
+    String cached = stringRedisTemplate.opsForValue().get(key);
+    if (StringUtils.hasText(cached)) {
+        return json.readValue(cached, UserProfileVO.class);
+    }
+
+    UserEntity user = userMapper.selectById(userId);
+    if (user == null) {
+        stringRedisTemplate.opsForValue().set(key, "{}", Duration.ofMinutes(1));
+        throw new BizException(ErrorCode.USER_NOT_FOUND);
+    }
+
+    UserProfileVO vo = userConverter.toProfileVO(user);
+    stringRedisTemplate.opsForValue().set(
+        key,
+        json.writeValueAsString(vo),
+        randomTtl(Duration.ofMinutes(10))
+    );
+    return vo;
+}
+```
+
+注意：
+
+- 空值缓存要用特殊标记，不要和真实空对象混淆。
+- 反序列化失败要删缓存，避免一直失败。
+- 热点缓存回源要加互斥或预热，避免同时打 DB。
+
+## 写入后删缓存
+
+事务提交后删除缓存更稳：
+
+```java
+@Transactional(rollbackFor = Exception.class)
+public void updateUserProfile(UpdateUserCommand command) {
+    userMapper.updateProfile(command.userId(), command.nickname(), command.avatar());
+
+    TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+        @Override
+        public void afterCommit() {
+            stringRedisTemplate.delete(RedisKeys.userProfile(command.userId()));
+        }
+    });
+}
+```
+
+为什么不要在事务提交前删：
+
+- 事务可能回滚，缓存已经删了。
+- 并发读可能在事务提交前回填旧数据。
+- 删除动作不是数据库事务的一部分。
+
+一致性要求更高时：
+
+- 写数据库。
+- 写 outbox 事件。
+- 事务提交后异步删缓存。
+- 删除失败重试。
+- 必要时用 binlog / CDC 订阅删缓存。
+
+## 穿透、击穿、雪崩
 
 ### 缓存穿透
 
-查一个根本不存在的数据：
+现象：请求不存在的数据，Redis 没有，MySQL 也没有，每次都打 DB。
 
-- Redis 没有
-- 数据库也没有
-- 大量请求持续打到数据库
+处理：
 
-常见解法：
+- 参数校验，非法 ID 直接拒绝。
+- 空值缓存，短 TTL。
+- 布隆过滤器挡明显不存在的数据。
 
-- 缓存空值
-- 布隆过滤器
-- 参数合法性校验
+空值缓存：
+
+```java
+if (user == null) {
+    stringRedisTemplate.opsForValue().set(key, "__NULL__", Duration.ofMinutes(1));
+    return null;
+}
+```
 
 ### 缓存击穿
 
-某个热点 key 刚好过期：
+现象：热点 key 过期，大量请求同时回源 DB。
 
-- 大量请求同时来
-- 一起回源数据库
-- 把数据库压垮
+处理：
 
-常见解法：
+- 热点 key 预热。
+- 热点 key 逻辑过期。
+- 回源时加互斥锁。
+- TTL 加随机抖动。
 
-- 热点 key 不轻易过期
-- 互斥锁重建
-- 逻辑过期 + 异步刷新
+互斥回源示例：
+
+```java
+String lockKey = key + ":lock";
+Boolean locked = stringRedisTemplate.opsForValue()
+    .setIfAbsent(lockKey, UUID.randomUUID().toString(), Duration.ofSeconds(5));
+
+if (Boolean.TRUE.equals(locked)) {
+    try {
+        return loadFromDbAndRefreshCache(userId);
+    } finally {
+        stringRedisTemplate.delete(lockKey);
+    }
+}
+
+Thread.sleep(50);
+return getUserProfile(userId);
+```
+
+生产里锁释放要校验唯一值，或者直接用 Redisson。
 
 ### 缓存雪崩
 
-很多 key 在同一时间大面积过期：
+现象：大量 key 同时失效，或者 Redis 整体不可用。
 
-- 流量一起回源
-- 数据库瞬间顶不住
+处理：
 
-常见解法：
+- TTL 随机抖动。
+- 热点 key 分批预热。
+- 限流和降级。
+- 本地缓存兜底。
+- Redis 高可用部署和监控。
 
-- 过期时间加随机值
-- 分批预热
-- 限流降级
+## Spring Boot 接入
 
-## 空值缓存为什么很有用
+依赖：
 
-如果一个 ID 根本不存在，最简单实用的做法往往就是：
-
-- 数据库查不到
-- 在 Redis 里缓存一个空标记
-- TTL 设短一点，比如 `1min - 5min`
-
-这样可以挡住很多重复无效请求。  
-很多项目里它比复杂布隆过滤器更先落地、更容易见效。
-
-## key 命名一定要统一
-
-Redis 一旦项目做大，最容易先乱掉的就是 key。
-
-比较推荐的风格：
-
-```text
-业务:对象:标识[:字段]
+```xml
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-data-redis</artifactId>
+</dependency>
 ```
 
-例如：
+配置：
 
-- `user:profile:1001`
-- `user:permission:1001`
-- `order:detail:202405110001`
-- `sms:code:13800138000`
-- `rate_limit:login:ip:10.0.0.1`
+```yaml
+spring:
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      timeout: 2s
+      lettuce:
+        pool:
+          max-active: 16
+          max-idle: 8
+          min-idle: 2
+```
 
-经验上要注意：
-
-1. 统一小写。
-2. 用冒号分层。
-3. 不要把整段 SQL 当 key。
-4. 不要没有业务前缀。
-5. 能从 key 一眼看出用途和 TTL 范围。
-
-## TTL 一定要设计，不要随手拍
-
-缓存 TTL 不只是“过多久失效”，它背后其实在决定：
-
-- 一致性窗口
-- 回源频率
-- 内存占用
-- 雪崩风险
-
-例如：
-
-- 用户资料：`10min - 1h`
-- 字典配置：`1h - 24h`
-- 验证码：`2min - 5min`
-- 登录 token：跟鉴权策略一致
-
-如果你所有 key 都拍一个统一 `30min`，后面通常会很难受。
-
-## Spring Boot 里怎么接更合理
-
-### 常规缓存读写
-
-很多项目用 `StringRedisTemplate` 或 `RedisTemplate`。
-
-如果想自己精细控制 key、TTL、序列化，通常更推荐显式封装一层：
-
-- `UserCacheService`
-- `OrderCacheService`
-- `CaptchaCacheService`
-
-而不是在业务代码里到处直接：
+常规项目优先用 `StringRedisTemplate`：
 
 ```java
-redisTemplate.opsForValue().get(key);
+@Service
+public class CacheService {
+
+    private final StringRedisTemplate stringRedisTemplate;
+
+    public CacheService(StringRedisTemplate stringRedisTemplate) {
+        this.stringRedisTemplate = stringRedisTemplate;
+    }
+
+    public void put(String key, String value, Duration ttl) {
+        stringRedisTemplate.opsForValue().set(key, value, ttl);
+    }
+}
 ```
 
-因为一旦散着写，后面：
+如果用 `RedisTemplate<String, Object>`，序列化器要统一：
 
-- key 管不住
-- TTL 管不住
-- 删除策略管不住
+```java
+@Bean
+public RedisTemplate<String, Object> redisTemplate(RedisConnectionFactory connectionFactory) {
+    RedisTemplate<String, Object> template = new RedisTemplate<>();
+    template.setConnectionFactory(connectionFactory);
+    template.setKeySerializer(new StringRedisSerializer());
+    template.setHashKeySerializer(new StringRedisSerializer());
+    template.setValueSerializer(new GenericJackson2JsonRedisSerializer());
+    template.setHashValueSerializer(new GenericJackson2JsonRedisSerializer());
+    template.afterPropertiesSet();
+    return template;
+}
+```
 
-### `@Cacheable`
+不要在同一个项目里一部分用 JDK 序列化，一部分用 JSON，一部分手写字符串。
 
-Spring Cache 很适合：
+## `@Cacheable` 能不能用
 
-- 简单读缓存
-- 注解式缓存
-- 低复杂度场景
+可以，但适合规则简单的缓存。
 
-但它不太适合：
+```java
+@Cacheable(cacheNames = "userProfile", key = "#userId", unless = "#result == null")
+public UserProfileVO getUserProfile(Long userId) {
+    return userRepository.getProfile(userId);
+}
+```
 
-- 复杂 key 设计
-- 细粒度空值控制
-- 复杂缓存重建
-- 需要非常明确缓存治理的场景
+更新时删除：
 
-所以：
+```java
+@CacheEvict(cacheNames = "userProfile", key = "#command.userId")
+public void updateUserProfile(UpdateUserCommand command) {
+    userRepository.updateProfile(command);
+}
+```
 
-- 简单项目可以先用 `@Cacheable`
-- 稍复杂的系统，核心缓存建议自己收口封装
+不适合只靠注解的场景：
 
-## 序列化不要随便选
+- 需要空值缓存。
+- 需要随机 TTL。
+- 需要互斥回源。
+- 需要按多个 key 删除。
+- 缓存结构和返回结构不一致。
 
-Redis 里存对象时，常见几种方式：
+复杂缓存建议自己封装，不要让注解把一致性藏起来。
 
-- JDK 序列化
-- JSON
-- Hash 拆字段
+## 分布式锁
 
-通常更推荐：
+最小命令语义：
 
-- 能 JSON 就 JSON
-- 特别频繁改局部字段时考虑 Hash
+```text
+SET lock:order:10001 <unique-value> NX PX 10000
+```
 
-不太推荐默认 JDK 序列化直接一路走到底，因为：
+释放锁必须校验 value：
 
-- 可读性差
-- 跨语言差
-- 升级兼容麻烦
+```lua
+if redis.call("get", KEYS[1]) == ARGV[1] then
+    return redis.call("del", KEYS[1])
+else
+    return 0
+end
+```
 
-## 分布式锁能不能用 Redis
+锁适合：
 
-能，但要非常克制。
+- 防重复提交。
+- 单个资源短时间互斥。
+- 定时任务抢占。
+- 缓存击穿时互斥回源。
 
-Redis 锁适合：
+锁不适合：
 
-- 短临界区
-- 幂等保护
-- 防止短时间重复执行
+- 长事务。
+- 强一致资金操作。
+- 不知道任务最长执行多久。
+- 锁内调用很多外部系统。
 
-不适合：
+生产建议优先用 Redisson，并配置：
 
-- 长事务
-- 强一致核心扣减
-- 失败后没有补偿能力的业务
+- 等待时间。
+- 租约时间。
+- 看门狗续期是否符合业务。
+- finally 释放锁。
+- 加锁失败的业务返回。
 
-最基本的思路通常是：
+## 计数与限流
 
-- `SET key value NX EX seconds`
-- value 用唯一请求 ID
-- 解锁时校验 value 再删
+简单计数：
 
-也就是说，锁不是“抢到就安全了”，而是你还要考虑：
+```java
+Long count = stringRedisTemplate.opsForValue().increment(key);
+if (count != null && count == 1) {
+    stringRedisTemplate.expire(key, Duration.ofMinutes(1));
+}
+```
 
-- 锁过期怎么办
-- 业务执行太久怎么办
-- 客户端宕机怎么办
-- 误删别人的锁怎么办
+问题：`INCR` 成功后，如果设置过期失败，key 可能不过期。
 
-## Redis 扣减库存为什么总是容易被误用
+更稳的是 Lua：
 
-因为很多人会觉得：
+```lua
+local current = redis.call("incr", KEYS[1])
+if current == 1 then
+    redis.call("expire", KEYS[1], ARGV[1])
+end
+return current
+```
 
-- Redis 快
-- `decr` 原子
-- 那库存直接在 Redis 扣不就完了
+滑动窗口可以用 `ZSet`：
 
-问题在于库存不是单纯数字，而是业务状态。
+```text
+ZADD login:window:13800138000 <timestamp> <requestId>
+ZREMRANGEBYSCORE login:window:13800138000 0 <now - window>
+ZCARD login:window:13800138000
+EXPIRE login:window:13800138000 <window>
+```
 
-你还要考虑：
+限流要明确：
 
-- 下单失败后怎么回补
-- 重试时会不会重复扣
-- Redis 和数据库怎么对账
-- 超卖后的补偿怎么做
+- 按用户、IP、设备还是接口限。
+- 窗口大小。
+- 超限返回码。
+- 是否影响正常用户。
 
-所以 Redis 更适合做：
+## 排行榜
 
-- 库存预热
-- 限流和抢购前置判断
-- 高并发削峰
+`ZSet` 示例：
 
-而不应该直接取代最终库存真相。
+```java
+String key = "mall:rank:product-hot:20240601";
+stringRedisTemplate.opsForZSet().incrementScore(key, productId.toString(), 1);
+stringRedisTemplate.expire(key, Duration.ofDays(3));
+```
 
-## 排行榜为什么很适合 `ZSet`
+查 TopN：
 
-因为它天然支持：
+```java
+Set<String> productIds = stringRedisTemplate.opsForZSet()
+    .reverseRange(key, 0, 99);
+```
 
-- 分数排序
-- 范围查询
-- 取前 N
-- 更新某个成员分数
+注意：
 
-例如游戏积分榜、活动榜单、消费排行，这类场景通常就很适合 `ZSet`。
+- 日榜、周榜、总榜要分 key。
+- score 含义要稳定。
+- 榜单详情通常还要批量查数据库或缓存。
+- 榜单 key 要有过期和归档策略。
 
-如果你发现自己在数据库里频繁“按分数排序取前 100”，Redis `ZSet` 往往就是很自然的优化点。
+## 库存不要只靠 Redis
 
-## 常见坑
+常见误区：
 
-### 1. 把 Redis 当数据库用
+```text
+Redis 很快 -> 直接 INCR/DECR 扣库存 -> 订单成功
+```
 
-最后所有状态都往 Redis 放，结果：
+问题：
 
-- 内存成本高
-- 数据治理混乱
-- 重启、淘汰、过期带来大量隐患
+- Redis 扣了，MySQL 写失败怎么办。
+- MySQL 扣了，Redis 删除失败怎么办。
+- 订单取消要怎么回补。
+- Redis 重启丢数据怎么办。
+- 超卖和少卖怎么对账。
 
-### 2. 没有设置过期时间
+更稳的模式：
 
-短状态如果没有 TTL，最后通常会变成“永久垃圾数据池”。
+```text
+1. Redis 做活动库存预热和快速拦截
+2. 请求进入后写订单 / 冻结库存消息
+3. MySQL 做最终扣减，带条件更新
+4. MQ 异步削峰
+5. 定时对账 Redis、订单、库存流水
+```
 
-### 3. 大 key 问题
+MySQL 条件扣减示例：
 
-比如一个 key 里塞了特别大的 JSON、巨长列表、超大集合。  
-这会影响：
+```sql
+update sku_stock
+set available_stock = available_stock - 1
+where sku_id = 10001
+  and available_stock >= 1;
+```
 
-- 网络传输
-- 序列化
-- Redis 单线程处理延迟
+受影响行数为 1 才算扣减成功。
 
-### 4. 热点 key 问题
+## 大 key 和热点 key
 
-某个 key 被超高频访问时，要考虑：
+大 key 风险：
 
-- 本地缓存
-- 多级缓存
-- 热点保护
-- 永不过期 + 异步刷新
+- 网络传输慢。
+- 删除阻塞。
+- 序列化慢。
+- 主从同步压力大。
+- 迁移和扩容风险高。
 
-### 5. 删除缓存顺序错了
+常见大 key：
 
-先删缓存再更新数据库，遇到并发读写时很容易把旧值重新写回缓存。
+- 一个 Hash 放几十万字段。
+- 一个 String 放几 MB JSON。
+- 一个 List / Set / ZSet 无限增长。
 
-更常见的稳妥顺序仍然是：
+处理：
 
-- 更新数据库
-- 删除缓存
+- 拆 key。
+- 分页读。
+- 控制集合长度。
+- 删除用异步删除能力。
+- 定期扫描和报警。
 
-## 一种比较推荐的项目实践
+热点 key 风险：
 
-如果是普通 Spring Boot 业务系统，我会这样约束：
+- 单 key 被大量请求打爆。
+- Redis Cluster 下单 slot 压力大。
+- 本地缓存可能更合适。
 
-1. Redis 只承担缓存、短状态、计数、轻量协作。
-2. 每类缓存都定义清晰的 key 前缀和 TTL。
-3. 关键缓存统一封装到专门的 cache service。
-4. 读多写少场景优先 `cache aside`。
-5. 对不存在的数据做短 TTL 空值缓存。
-6. 过期时间加随机扰动，避免雪崩。
-7. 热点 key 单独治理，不和普通 key 一视同仁。
-8. 强一致业务最终仍以数据库或主存储为准。
+处理：
 
-## 最后记一句话
+- 本地缓存。
+- key 分片。
+- 热点预热。
+- 限流。
+- 逻辑过期异步刷新。
 
-**Redis 最有价值的地方，不是“快”，而是它能把高频、短状态、简单结构的压力从主存储里拿走。**
+## 监控指标
 
-只要你一直记住：
+至少看这些：
 
-- 它擅长加速，不擅长兜底一切
-- 它擅长短状态，不擅长长期复杂真相
-- 它擅长削峰，不擅长单独保证完整业务一致性
+- 命中率。
+- QPS。
+- 平均耗时和 P99。
+- 慢命令。
+- 内存使用率。
+- 连接数。
+- key 数量。
+- 过期 key 数。
+- 大 key。
+- 热点 key。
+- 阻塞命令：`keys`、大范围 `hgetall`、大集合操作。
 
-这篇基础笔记就算抓住重点了。
+线上不要使用：
+
+```text
+KEYS *
+```
+
+排查用：
+
+```text
+SCAN 0 MATCH mall:user:* COUNT 100
+```
+
+`SCAN` 也不是完全免费，只是比 `KEYS` 安全很多。
+
+## 落地检查清单
+
+- [ ] key 命名规则统一。
+- [ ] 所有缓存 key 都有 TTL 策略。
+- [ ] 空值缓存和真实数据能区分。
+- [ ] TTL 有随机抖动。
+- [ ] 写 MySQL 后删除缓存，而不是随手更新缓存。
+- [ ] 删除缓存放到事务提交后。
+- [ ] 缓存击穿有互斥或逻辑过期方案。
+- [ ] 没有把 Redis 当最终数据库。
+- [ ] 分布式锁有唯一值、过期、校验释放。
+- [ ] 序列化方式统一。
+- [ ] 大 key、热点 key、慢命令有监控。
+- [ ] Redis 不可用时核心业务有降级策略。
+
+## 参考
+
+- [Redis data types](https://redis.io/docs/latest/develop/data-types/)
+- [Redis keyspace](https://redis.io/docs/latest/develop/using-commands/keyspace/)
+- [Redis EXPIRE](https://redis.io/docs/latest/commands/expire/)
+- [Redis SET](https://redis.io/docs/latest/commands/set/)

@@ -5,140 +5,66 @@ sidebarTitle: Nacos
 
 # Nacos 使用笔记
 
-Nacos 在很多 Spring Cloud 项目里同时承担两件事：
-
-- 注册中心
-- 配置中心
-
-也正因为它一口气把这两件事都接住了，团队很容易在项目里把它用得既重要又含糊，最后出现这些问题：
-
-- 服务能注册上去，但大家说不清实例是怎么选出来的
-- 配置能改，但没人知道哪些会热更新、哪些不会
-- `namespace`、`group`、`dataId` 到处乱用
-- 本地、测试、生产配置混在一起
-- 把“服务发现”和“配置治理”写成两个完全断开的东西
-
-所以 Nacos 真正要理解的，不是“怎么把 starter 引进来”，而是它到底在系统里扮演什么角色。
-
-## 先说结论
-
-普通 Spring Cloud 项目里，Nacos 更稳的用法通常是：
-
-1. 注册中心和配置中心都可以用它，但要在概念上分开治理。
-2. `namespace` 用来隔离环境或租户级空间，不要拿来替代一切分类。
-3. `group` 用来做业务或配置分组，不要无限滥造。
-4. `dataId` 命名要稳定可预测，一眼能看出应用和用途。
-5. 动态配置只给真正适合热更新的内容，不要什么都指望在线改。
-6. 服务调用问题和配置发布问题要分开排查，不要都怪“Nacos 挂了”。
-
-一句话就是：
-
-**Nacos 是治理中心，不只是一个“服务能连起来”的中间件。**
-
-## 它到底解决什么
-
-### 1. 服务注册与发现
-
-微服务实例启动后，把自己的地址、端口、元数据注册到 Nacos。  
-调用方不再手写固定 IP，而是通过服务名发现可用实例。
-
-例如：
-
-- `user-service`
-- `order-service`
-- `inventory-service`
-
-调用方真正依赖的就不再是某个具体地址，而是逻辑服务名。
-
-### 2. 配置集中管理
-
-把配置从应用本地文件里抽出来，统一放到 Nacos：
-
-- 数据源
-- Redis
-- MQ
-- 业务开关
-- 限流参数
-
-这样可以减少每个服务各自维护一堆配置文件的问题。
-
-## 注册中心这条线要怎么理解
-
-一个服务实例注册到 Nacos，最核心的信息通常是：
-
-- 服务名
-- IP / Port
-- 所属集群
-- 元数据
-- 健康状态
-
-调用方通过服务名去发现实例，再交给负载均衡层选一个节点发请求。
-
-这意味着：
-
-- Nacos 负责“有哪些实例”
-- 负载均衡负责“这次选谁”
-- Feign / Gateway / LoadBalancer 负责“怎么调”
-
-很多项目会把这三层混成一层，这是排障时最容易绕进去的地方。
-
-## 配置中心这条线要怎么理解
-
-Nacos 配置的三个核心维度通常是：
-
-- `namespace`
-- `group`
-- `dataId`
-
-这三个维度没想清楚，后面配置一定会乱。
-
-### `namespace`
-
-更适合做大隔离：
-
-- 开发环境
-- 测试环境
-- 预发环境
-- 生产环境
-
-也可以在多租户控制非常强的系统里做更高级别隔离，但普通项目里最常见的还是按环境拆。
-
-### `group`
-
-更适合做同一空间内的业务分组，例如：
-
-- `DEFAULT_GROUP`
-- `ORDER_GROUP`
-- `PAY_GROUP`
-
-如果你没有特别强的分组需求，`group` 不要设计得太花。
-
-### `dataId`
-
-这是真正常用的配置标识。  
-比较常见的命名方式例如：
+Nacos 在 Spring Cloud Alibaba 项目里通常做两件事：
 
 ```text
-order-service.yaml
-order-service-dev.yaml
-order-service-db.yaml
-order-service-feature.yaml
+服务注册与发现：服务实例在哪里
+配置中心：应用配置从哪里加载
 ```
 
-经验上最好做到：
+这篇不讲“Nacos 是什么”，只记项目里怎么落：依赖怎么引、`application.yml` 怎么写、`namespace / group / dataId` 怎么定、配置怎么刷新、服务发现怎么排查。
 
-- 一眼看出属于哪个服务
-- 一眼看出是主配置还是子配置
-- 不靠口口相传理解命名
+## 先给结论
 
-## Spring Cloud 项目里最常见的接法
+普通后端项目用 Nacos，先按这套规则来：
 
-通常会有两条依赖线：
+1. 注册中心和配置中心可以都用 Nacos，但配置要分开治理。
+2. `namespace` 优先用于环境隔离，例如 dev、test、prod。
+3. `group` 用于业务分组或配置分组，不要滥造。
+4. `dataId` 必须稳定命名，一眼能看出应用、环境和配置类型。
+5. Spring Cloud Alibaba 2025.x 推荐用 `spring.config.import` 导入 Nacos 配置，不要再依赖 `bootstrap.yml`。
+6. 动态刷新只适合开关、阈值、文案、限流参数，不适合数据源、端口、线程池核心结构这类配置。
+7. 注册成功不等于调用成功，调用还要经过服务发现、负载均衡、网络和下游健康状态。
+8. 生产环境不要把 Nacos 健康检查随便接到 Kubernetes liveness probe 上。
 
-- `spring-cloud-starter-alibaba-nacos-discovery`
-- `spring-cloud-starter-alibaba-nacos-config`
+一句话：
 
-### 注册中心配置
+**Nacos 是服务治理和配置治理的基础设施，不是“配上地址就完事”的连接器。**
+
+## 依赖
+
+服务注册与发现：
+
+```xml
+<dependency>
+    <groupId>com.alibaba.cloud</groupId>
+    <artifactId>spring-cloud-starter-alibaba-nacos-discovery</artifactId>
+</dependency>
+```
+
+配置中心：
+
+```xml
+<dependency>
+    <groupId>com.alibaba.cloud</groupId>
+    <artifactId>spring-cloud-starter-alibaba-nacos-config</artifactId>
+</dependency>
+```
+
+两个 starter 可以一起用，也可以只用其中一个。
+
+项目里要先确认版本矩阵：
+
+```text
+Spring Boot 版本
+Spring Cloud 版本
+Spring Cloud Alibaba 版本
+Nacos Server 版本
+```
+
+不要只看 starter 能不能下载。版本不匹配时，最常见的问题是启动报错、配置不加载、注册不上或运行时兼容问题。
+
+## 最小配置：注册中心
 
 ```yaml
 spring:
@@ -148,10 +74,70 @@ spring:
     nacos:
       discovery:
         server-addr: 127.0.0.1:8848
-        namespace: dev-namespace-id
+        namespace: dev
+        group: DEFAULT_GROUP
+        cluster-name: DEFAULT
+        metadata:
+          version: v1
+          region: cn-shanghai
 ```
 
-### 配置中心配置
+启动后，应用会以服务名注册到 Nacos：
+
+```text
+serviceName = order-service
+ip = 当前实例 IP
+port = server.port
+namespace = dev
+group = DEFAULT_GROUP
+cluster = DEFAULT
+metadata = version / region / 自定义信息
+```
+
+调用方通过服务名访问：
+
+```java
+@FeignClient(name = "user-service", path = "/api/users")
+public interface UserClient {
+
+    @GetMapping("/{id}")
+    UserProfileResponse getById(@PathVariable("id") Long id);
+}
+```
+
+这里的 `user-service` 会走服务发现，不是固定 IP。
+
+## 最小配置：配置中心
+
+Spring Cloud Alibaba 2025.x 推荐使用 `spring.config.import`。
+
+```yaml
+spring:
+  application:
+    name: order-service
+  cloud:
+    nacos:
+      config:
+        server-addr: 127.0.0.1:8848
+        namespace: dev
+        group: DEFAULT_GROUP
+  config:
+    import:
+      - optional:nacos:order-service.yml
+      - optional:nacos:order-service-ext.yml?group=ORDER_GROUP
+      - optional:nacos:order-service-local.yml?refreshEnabled=false
+```
+
+含义：
+
+| 配置 | 说明 |
+| --- | --- |
+| `optional:nacos:order-service.yml` | 拉取 `DEFAULT_GROUP` 下的 `order-service.yml`，拉不到也不阻止启动 |
+| `nacos:order-service.yml` | 拉不到会快速失败，应用启动失败 |
+| `?group=ORDER_GROUP` | 覆盖默认 group |
+| `?refreshEnabled=false` | 不监听动态刷新 |
+
+旧项目里常见 `bootstrap.yml`：
 
 ```yaml
 spring:
@@ -159,219 +145,402 @@ spring:
     nacos:
       config:
         server-addr: 127.0.0.1:8848
-        namespace: dev-namespace-id
-        group: DEFAULT_GROUP
-        file-extension: yaml
+        file-extension: yml
 ```
 
-核心不是会不会写这几行，而是：
+如果是新项目，优先用 `spring.config.import`。
+如果是旧项目迁移，先确认当前 Spring Cloud Alibaba 版本是否还支持 bootstrap。
 
-- 服务注册读的是 `discovery`
-- 配置拉取读的是 `config`
+## `namespace / group / dataId`
 
-它们虽然都连 Nacos，但不是同一套问题。
+Nacos 配置定位一般可以理解成：
 
-## `bootstrap` 和 `application` 的区别为什么老被提
+```text
+namespace + group + dataId
+```
 
-因为配置中心的很多内容需要在应用启动早期就拿到。
+### `namespace`
 
-老版本 Spring Cloud 体系里，很多人会把 Nacos 配置放在 `bootstrap.yml`。  
-后面的配置加载机制调整过之后，也有人用新的导入方式。
+用于隔离大环境：
 
-真正要记住的不是某个版本的写法，而是：
+```text
+dev
+test
+prod
+```
 
-**Nacos 配置里有一部分是“启动前置配置”，不能等应用跑起来后再想办法补。**
+建议：
 
-例如：
+- 不同环境用不同 namespace。
+- 不要在同一个 namespace 里靠配置名字硬区分生产和测试。
+- 生产 namespace 的权限要单独控制。
 
-- 应用名
-- Nacos 地址
-- 所属命名空间
-- 核心远程配置位置
+### `group`
 
-## 动态刷新不是万能的
+用于分组：
 
-很多人喜欢把 Nacos 配置中心宣传成“线上改完立刻生效”，但这句话只对了一半。
+```text
+DEFAULT_GROUP
+ORDER_GROUP
+COMMON_GROUP
+```
 
-真正要区分两类配置：
+建议：
 
-### 适合动态刷新的
+- 默认业务应用可以先用 `DEFAULT_GROUP`。
+- 公共配置可以放 `COMMON_GROUP`。
+- 不要把每个服务都建一个 group，除非真的有治理需要。
 
-- 开关类配置
-- 阈值类配置
-- 白名单
-- 降级参数
+### `dataId`
 
-### 不适合指望热更新的
+用于具体配置文件：
 
-- 数据源底层结构配置
-- 太早初始化的 Bean
-- 改完会影响连接池或核心线程模型的配置
-- 没有接刷新机制的普通 `@Value`
+```text
+order-service.yml
+order-service-database.yml
+order-service-feign.yml
+common-redis.yml
+common-rabbitmq.yml
+```
 
-所以线上改配置前，最好先回答：
+建议命名：
 
-- 这项配置是否真的会刷新进 Bean
-- 刷新后是否会影响已有连接或已有状态
-- 如果刷新失败，回滚怎么办
+```text
+{application-name}.yml
+{application-name}-{module}.yml
+common-{module}.yml
+```
 
-## `@RefreshScope` 该怎么理解
+不要用：
 
-它的本质不是“加了就万事大吉”，而是告诉 Spring：
+```text
+config.yml
+test.yml
+new.yml
+aaaa.yml
+```
 
-- 这个 Bean 允许在配置变更后重新装配
+这种名字后面没人知道是谁在用。
 
-它适合：
+## 配置拆分方式
 
-- 配置驱动的业务开关
-- 动态阈值
-- 灰度参数
+一个服务可以这样拆：
 
-不适合无脑全项目乱加，因为：
+```text
+order-service.yml
+order-service-database.yml
+order-service-feign.yml
+order-service-rabbitmq.yml
+common-redis.yml
+```
 
-- Bean 生命周期会更复杂
-- 调试和问题定位会更绕
+应用导入：
 
-## Nacos 和 OpenFeign 的关系
+```yaml
+spring:
+  config:
+    import:
+      - optional:nacos:common-redis.yml?group=COMMON_GROUP
+      - optional:nacos:order-service.yml
+      - optional:nacos:order-service-database.yml
+      - optional:nacos:order-service-feign.yml
+      - optional:nacos:order-service-rabbitmq.yml
+```
 
-你前面已经补了 `OpenFeign`，这一条正好能接上。
+拆分原则：
 
-在典型链路里：
+- 主配置放服务基础配置。
+- 公共中间件配置单独放。
+- 特定模块配置单独放。
+- 不要把所有服务的所有配置塞进一个大 dataId。
 
-1. 服务实例注册到 Nacos
-2. 调用方通过服务名发现下游
-3. LoadBalancer 选实例
-4. Feign 发请求
+## 动态刷新
 
-所以：
+适合动态刷新的配置：
 
-- Feign 解决“怎么声明式调用”
-- Nacos 解决“调用目标从哪来”
+```yaml
+feature:
+  new-order-page-enabled: true
 
-如果 Feign 调不通，不要上来就说是 Feign 问题，也不要上来就说是 Nacos 问题，要分层排：
+order:
+  max-cancel-minutes: 30
 
-1. 服务注册上去了吗
-2. 调用方能发现实例吗
-3. 负载均衡选出来了吗
-4. HTTP 本身能通吗
+remote:
+  user-service:
+    read-timeout: 3000
+```
 
-## Nacos 配置拆分怎么做更稳
+读取方式：
 
-比较常见的做法有两种：
+```java
+@ConfigurationProperties(prefix = "order")
+public class OrderProperties {
 
-### 1. 一个服务一个主配置
+    private Integer maxCancelMinutes = 30;
 
-例如：
+    public Integer getMaxCancelMinutes() {
+        return maxCancelMinutes;
+    }
 
-- `order-service.yaml`
-- `user-service.yaml`
+    public void setMaxCancelMinutes(Integer maxCancelMinutes) {
+        this.maxCancelMinutes = maxCancelMinutes;
+    }
+}
+```
 
-优点：
+使用：
 
-- 直观
-- 简单
+```java
+@Service
+public class OrderCancelService {
 
-缺点：
+    private final OrderProperties orderProperties;
 
-- 配置多了会越堆越大
+    public OrderCancelService(OrderProperties orderProperties) {
+        this.orderProperties = orderProperties;
+    }
 
-### 2. 主配置 + 扩展配置
+    public boolean canCancel(LocalDateTime createdAt) {
+        return createdAt.plusMinutes(orderProperties.getMaxCancelMinutes())
+                .isAfter(LocalDateTime.now());
+    }
+}
+```
 
-例如：
+不建议动态刷新：
 
-- `order-service.yaml`
-- `order-service-db.yaml`
-- `order-service-redis.yaml`
-- `order-service-feature.yaml`
+- `server.port`
+- 数据源核心连接参数
+- 线程池核心结构
+- MyBatis mapper 扫描路径
+- Bean 创建条件
+- 需要重建连接的复杂客户端
 
-优点：
+这类配置改了不代表运行时对象会自动重建。
 
-- 便于分模块管理
-- 修改影响面更清楚
+## `@RefreshScope` 慎用
 
-缺点：
+有些旧项目会这样写：
 
-- 需要更强的命名纪律
+```java
+@RefreshScope
+@RestController
+public class ConfigController {
 
-普通项目里，如果配置已经明显开始变多，我更推荐第 2 种。
+    @Value("${order.max-cancel-minutes:30}")
+    private Integer maxCancelMinutes;
+}
+```
 
-## 服务实例元数据不要乱放
+问题是：
 
-Nacos 支持注册实例元数据，比如：
+- `@Value` 分散在各处，不好查。
+- `@RefreshScope` 可能导致 Bean 重新创建，影响依赖关系。
+- 大量使用后，配置边界不清楚。
+
+更推荐：
+
+```java
+@ConfigurationProperties(prefix = "order")
+public class OrderProperties {
+}
+```
+
+把配置集中成一个配置对象，再由业务类依赖这个对象。
+
+## 服务发现和负载均衡
+
+Nacos 负责维护实例列表：
+
+```text
+user-service
+  ├─ 10.0.0.11:8080 healthy
+  ├─ 10.0.0.12:8080 healthy
+  └─ 10.0.0.13:8080 unhealthy
+```
+
+调用方流程：
+
+```text
+Feign / LoadBalancer
+  -> 根据 service name 查实例
+  -> 过滤不可用实例
+  -> 按负载均衡策略选一个实例
+  -> 发 HTTP 请求
+```
+
+所以排查“调不通”时，要分层看：
+
+1. 服务是否注册到 Nacos。
+2. namespace / group 是否一致。
+3. 实例 IP 和端口是否正确。
+4. 实例健康状态是否正常。
+5. 调用方是否拿到了实例列表。
+6. 负载均衡后选中的实例是否能访问。
+7. 下游接口本身是否正常。
+
+不要所有问题都归成“Nacos 有问题”。
+
+## 服务元数据
+
+元数据可以写：
+
+```yaml
+spring:
+  cloud:
+    nacos:
+      discovery:
+        metadata:
+          version: v1
+          zone: zone-a
+          grayscale: "false"
+```
+
+适合放：
 
 - 版本号
-- 机房
 - 区域
-- 灰度标识
+- 灰度标记
+- 实例能力标签
 
-这些元数据很有价值，但要有明确用途。  
-不要变成“想放啥都放一点”的杂物间。
+不适合放：
 
-真正常见的用途是：
+- 密码
+- token
+- 大块配置
+- 经常变化的业务参数
 
-- 灰度发布
-- 就近路由
-- 版本筛选
+元数据会被服务发现链路读取。
+不要把它当配置中心用。
 
-如果你的系统没有真的消费这些元数据，就不要堆太多。
+## 和 OpenFeign 的关系
+
+OpenFeign 里的：
+
+```java
+@FeignClient(name = "user-service")
+```
+
+会把 `user-service` 当成服务名。
+
+如果接了 Nacos Discovery，调用时会从 Nacos 找实例：
+
+```text
+user-service -> [10.0.0.11:8080, 10.0.0.12:8080]
+```
+
+所以 Feign 调不通时，不只看 Feign：
+
+- Nacos 里有没有 `user-service`
+- 当前应用 namespace 是否一致
+- 分组是否一致
+- 实例 IP 是否是容器内不可达 IP
+- 下游健康状态是否正常
+- Feign 超时是否过短
+
+## Actuator 排查入口
+
+可以接 Actuator 看 Nacos 信息。
+
+```xml
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-actuator</artifactId>
+</dependency>
+```
+
+常用端点：
+
+```text
+/actuator/nacosconfig
+/actuator/nacosdiscovery
+```
+
+配置暴露：
+
+```yaml
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,nacosconfig,nacosdiscovery
+```
+
+注意：Nacos health indicator 默认可能没有开启。
+即使开启，也不要直接把它和 Kubernetes liveness probe 绑死。
+
+如果 Nacos 短暂抖动导致 health 变 `DOWN`，Kubernetes 可能误杀大量正常业务 Pod。
 
 ## 常见坑
 
-### 1. 环境隔离做得很随意
+### 1. 还在新项目里写 `bootstrap.yml`
 
-最危险的情况就是：
+Spring Cloud Alibaba 2025.x 已经推荐 `spring.config.import`。
+新项目不要继续拿旧模板复制。
 
-- 测试环境和生产环境共用 namespace
-- 或者服务名一样、配置分组混乱
+### 2. namespace 写错
 
-这种问题一旦发生，后果通常不是“小错”，而是直接串环境。
+服务注册在 `dev`，调用方在 `test`，自然找不到。
 
-### 2. 把 `namespace`、`group`、`dataId` 当同一种分类工具
+### 3. group 滥用
 
-最后大家都能分类，但没人说得清每一层为什么存在。  
-分类一多，治理反而更差。
+每个服务一个 group，最后配置查找和权限管理都变复杂。
 
-### 3. 配置热更新预期过高
+### 4. dataId 命名随意
 
-以为所有配置改完都能立即生效，结果线上一改发现：
+`test.yml`、`config.yml` 这种名字无法长期维护。
 
-- 有些 Bean 没刷新
-- 有些连接没重建
-- 有些逻辑根本没读到新值
+### 5. 动态刷新预期过高
 
-### 4. 只会在控制台看“服务在线”
+配置变了，不代表所有 Bean、连接池、线程池都会自动重建。
 
-控制台显示在线，不代表：
+### 6. 公共配置和服务私有配置混在一起
 
-- 调用一定成功
-- 网络一定互通
-- 配置一定正确
+一个公共 dataId 被很多服务引用，随手改一行就可能影响一片服务。
 
-它只能说明注册层面有实例信息。
+### 7. 注册 IP 不可达
 
-### 5. 把公共配置和服务私有配置混在一起
+容器、虚拟机、多网卡环境里，注册到 Nacos 的 IP 可能不是调用方能访问的 IP。
 
-最后一个 `common.yaml` 越写越大，所有服务都依赖，变更风险非常高。
+必要时显式配置：
 
-更稳的做法是：
+```yaml
+spring:
+  cloud:
+    nacos:
+      discovery:
+        ip: 10.0.0.11
+```
 
-- 公共配置保持很薄
-- 服务私有配置明确归属
+### 8. 把 Nacos 当业务配置数据库
 
-## 一种比较推荐的项目实践
+高频变化、强一致、复杂查询的业务数据不要放 Nacos。
+Nacos 配置中心不是业务数据库。
 
-如果是普通 Spring Cloud 项目，我会这样落：
+## 项目检查清单
 
-1. `namespace` 按环境隔离。
-2. `group` 保持克制，按业务域或默认分组使用。
-3. `dataId` 统一命名规范，服务名优先。
-4. 注册中心问题和配置中心问题分开排查。
-5. 动态刷新只用于真正适合热更新的参数。
-6. 重要配置变更走发布流程，而不是直接在线裸改。
-7. 服务元数据只放真实会被路由或治理消费的信息。
+接入 Nacos 时检查：
+
+- 是否确认了 Spring Cloud Alibaba 和 Nacos Server 版本？
+- 注册中心和配置中心是否都真的需要？
+- namespace 是否按环境隔离？
+- group 是否有明确规则？
+- dataId 是否有命名规范？
+- 是否使用 `spring.config.import`？
+- 哪些配置允许动态刷新？
+- 配置变更是否有审批或发布记录？
+- Feign 调用方和服务提供方 namespace 是否一致？
+- Nacos 上显示的实例 IP 是否可达？
+- 是否需要 Actuator 端点辅助排查？
+- 是否避免把 Nacos health 直接作为 liveness probe？
 
 ## 最后记一句话
 
-**Nacos 最核心的价值，不是“让微服务能启动”，而是把服务寻址和配置治理收敛到一个可管理的中心。**
+Nacos 落地的关键不是“服务能注册、配置能读取”，而是：
 
-只要你一直把它看成治理设施，而不是一个单纯的 starter，这条线就不会越写越乱。
+**把环境隔离、配置命名、动态刷新边界、服务发现链路和排查入口都设计清楚。**
+
+## 参考
+
+- [Spring Cloud Alibaba Nacos Quick Start](https://sca.aliyun.com/en/docs/2025.x/user-guide/nacos/quick-start/)
+- [Spring Cloud Alibaba Nacos Advanced Guide](https://sca.aliyun.com/en/docs/2025.x/user-guide/nacos/advanced-guide/)

@@ -90,7 +90,6 @@ export default defineConfig({
       '/notes/agents/': [
         {
           text: '笔记',
-          collapsed: true,
           items: [
             { text: '笔记首页', link: '/notes/' }
           ]
@@ -175,7 +174,6 @@ export default defineConfig({
       '/notes/java-backend/': [
         {
           text: '笔记',
-          collapsed: true,
           items: [
             { text: '笔记首页', link: '/notes/' }
           ]
@@ -183,7 +181,24 @@ export default defineConfig({
         {
           text: 'Java 后端',
           items: [
-            createDocItem('notes/java-backend/index.md', '/notes/java-backend/', '专题首页'),
+            createDocItem('notes/java-backend/index.md', '/notes/java-backend/', '专题首页')
+          ]
+        },
+        {
+          text: 'Java 基础',
+          collapsed: true,
+          items: [
+            createDocItem(
+              'notes/java-backend/java-stream.md',
+              '/notes/java-backend/java-stream',
+              'Java Stream'
+            )
+          ]
+        },
+        {
+          text: '基础工程',
+          collapsed: true,
+          items: [
             createDocItem(
               'notes/java-backend/spring-boot-template.md',
               '/notes/java-backend/spring-boot-template',
@@ -203,17 +218,35 @@ export default defineConfig({
               'notes/java-backend/jwt-auth.md',
               '/notes/java-backend/jwt-auth',
               'JWT 鉴权'
-            ),
+            )
+          ]
+        },
+        {
+          text: '数据访问',
+          collapsed: true,
+          items: [
             createDocItem(
               'notes/java-backend/mybatis-plus.md',
               '/notes/java-backend/mybatis-plus',
               'MyBatis-Plus'
-            ),
+            )
+          ]
+        },
+        {
+          text: '事务与一致性',
+          collapsed: true,
+          items: [
             createDocItem(
               'notes/java-backend/transactional-rollback.md',
               '/notes/java-backend/transactional-rollback',
               'Spring 事务回滚'
-            ),
+            )
+          ]
+        },
+        {
+          text: '微服务组件',
+          collapsed: true,
+          items: [
             createDocItem(
               'notes/java-backend/openfeign.md',
               '/notes/java-backend/openfeign',
@@ -235,7 +268,6 @@ export default defineConfig({
       '/notes/mysql/': [
         {
           text: '笔记',
-          collapsed: true,
           items: [
             { text: '笔记首页', link: '/notes/' }
           ]
@@ -255,7 +287,6 @@ export default defineConfig({
       '/notes/redis/': [
         {
           text: '笔记',
-          collapsed: true,
           items: [
             { text: '笔记首页', link: '/notes/' }
           ]
@@ -275,7 +306,6 @@ export default defineConfig({
       '/notes/rabbitmq/': [
         {
           text: '笔记',
-          collapsed: true,
           items: [
             { text: '笔记首页', link: '/notes/' }
           ]

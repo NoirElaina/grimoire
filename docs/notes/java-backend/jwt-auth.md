@@ -5,482 +5,562 @@ sidebarTitle: JWT 鉴权
 
 # JWT 鉴权设计笔记
 
-JWT 不是“登录功能”，它只是**登录成功后携带身份的一种令牌格式**。  
-真正要设计的是整套鉴权链路：
+> JWT 不是“登录后发个字符串”这么简单，重点是签发、校验、续期、吊销、权限变更。
 
-- 用户怎么登录
-- 服务端怎么签发 token
-- 下游接口怎么校验 token
-- token 过期后怎么续签
-- 用户登出、封禁、改密后怎么让旧 token 失效
+## 先给结论
 
-如果这些没想清楚，只是“返回一个 JWT 字符串”，系统后面一定会越来越乱。
+一套后端 JWT 鉴权至少要有：
 
-## 先说结论
+- 登录接口：校验账号密码，签发 `accessToken` 和 `refreshToken`。
+- 鉴权过滤器：解析 `Authorization: Bearer xxx`，写入 `SecurityContext`。
+- 刷新接口：用 refresh token 换新的 access token。
+- 退出接口：吊销 refresh token，必要时拉黑 access token。
+- 密钥管理：不要把签名密钥硬编码在代码里。
+- 权限版本：改密码、禁用账号、改角色后让旧 token 失效。
 
-在普通 Java 后端项目里，JWT 最稳的落地方式通常是：
+JWT 能减少每次查 session，但不等于永远不用查 Redis / DB。
 
-1. `access token` 短期有效，比如 `30min - 2h`
-2. `refresh token` 更长，比如 `7d - 30d`
-3. `access token` 只放身份和鉴权必要信息，不放敏感业务数据
-4. 接口层无状态校验 `access token`
-5. `refresh token` 走单独续签接口，并保存在服务端可控存储里
-6. 需要“强制失效”能力时，不要迷信纯无状态 JWT，要配合 Redis / DB 做版本或黑名单
-
-也就是说，**生产里真正稳定的 JWT 方案，通常不是纯无状态。**
-
-## JWT 到底是什么
-
-JWT 全称 `JSON Web Token`，本质上是三段字符串：
+## 登录链路
 
 ```text
-header.payload.signature
+1. POST /auth/login
+2. 校验用户名和密码
+3. 查询用户状态、角色、权限版本
+4. 生成 access token，短有效期
+5. 生成 refresh token，长有效期，落库或落 Redis
+6. 返回 token pair
 ```
 
-### `header`
-
-声明令牌类型和签名算法，例如：
+返回示例：
 
 ```json
 {
-  "alg": "HS256",
-  "typ": "JWT"
+  "accessToken": "eyJhbGciOi...",
+  "accessTokenExpiresIn": 900,
+  "refreshToken": "f7c3d6...",
+  "refreshTokenExpiresIn": 1209600,
+  "tokenType": "Bearer"
 }
 ```
 
-### `payload`
+建议有效期：
 
-放业务声明，也就是 claims，例如：
+- `accessToken`：10～30 分钟。
+- `refreshToken`：7～30 天。
+- 管理后台比普通用户更短。
+- 高风险操作可以要求重新登录或二次验证。
+
+## 请求鉴权链路
+
+```text
+1. 前端带 Authorization: Bearer <accessToken>
+2. 过滤器提取 token
+3. 校验签名、过期时间、issuer、audience、tokenType
+4. 读取 userId、tenantId、rolesVersion、jti
+5. 必要时查用户状态 / token 版本 / 黑名单
+6. 构造 Authentication
+7. 放入 SecurityContextHolder
+8. 进入 Controller
+```
+
+失败时：
+
+- token 缺失：走匿名或返回 `401`。
+- token 过期：返回 `401 TOKEN_EXPIRED`。
+- token 签名错误：返回 `401 TOKEN_INVALID`。
+- 权限不足：返回 `403 FORBIDDEN`。
+
+## claims 放什么
+
+推荐：
 
 ```json
 {
+  "iss": "mall-auth",
+  "aud": "mall-api",
   "sub": "10001",
-  "username": "alice",
-  "roles": ["ADMIN"],
-  "iat": 1715400000,
-  "exp": 1715403600,
-  "jti": "8f8c0f2d-..."
+  "typ": "access",
+  "jti": "01HX...",
+  "tenantId": "t_001",
+  "rolesVersion": 3,
+  "iat": 1717200000,
+  "exp": 1717200900
 }
 ```
 
-### `signature`
+字段含义：
 
-服务端用密钥或私钥对前两段签名，防止内容被篡改。
+| 字段 | 用法 |
+| --- | --- |
+| `iss` | 签发方，防止拿别的系统 token 混用 |
+| `aud` | 接收方，防止 token 被别的服务误收 |
+| `sub` | 用户 ID |
+| `typ` | `access` 或 `refresh` |
+| `jti` | token 唯一 ID，做黑名单或审计 |
+| `tenantId` | 租户隔离 |
+| `rolesVersion` | 权限版本，用于权限变更后失效旧 token |
+| `iat` | 签发时间 |
+| `exp` | 过期时间 |
 
-这里一定要记住一件事：
+不要放：
 
-**JWT 默认只是防篡改，不是防查看。**  
-payload 经过 Base64URL 编码，不是加密。拿到 token 的人可以直接解开看内容。
+- 密码。
+- 手机号、身份证、银行卡。
+- 超大的权限列表。
+- 用户完整资料。
+- 会频繁变化的数据。
 
-## 常见标准字段
+JWT payload 只是 Base64URL 编码，不是加密。
 
-JWT 里最常用的 claims 有这些：
-
-- `sub`
-  主体，一般放用户 ID 或登录主体 ID
-- `iat`
-  签发时间
-- `exp`
-  过期时间
-- `nbf`
-  生效时间，早于这个时间不能用
-- `iss`
-  签发者
-- `aud`
-  接收方
-- `jti`
-  token 唯一 ID，适合做撤销、审计、幂等关联
-
-项目里最推荐保留的是：
-
-- `sub`
-- `iat`
-- `exp`
-- `jti`
-
-其余像 `username`、`roles`、`tenantId`，按业务需要再放。
-
-## payload 里到底该放什么
-
-这块是很多项目的第一个坑。
-
-JWT payload 适合放：
-
-- 用户主键 `userId`
-- 账号标识 `username`
-- 当前租户 `tenantId`
-- 简短角色集合 `roles`
-- 权限版本号 `tokenVersion`
-
-不适合放：
-
-- 手机号、邮箱、身份证号
-- 太长的权限列表
-- 会频繁变动的用户资料
-- 敏感配置
-- 大块业务对象
-
-原因很简单：
-
-1. JWT 会跟着每次请求走，太大浪费带宽。
-2. JWT 默认可读，不该放敏感字段。
-3. 放太多动态字段，会让 token 很快过时。
-
-经验上，payload 越小越稳。
-
-## 为什么很多人用了 JWT 还是要查 Redis / DB
-
-因为 JWT 只解决了“服务端能不能验证这串 token 是我签的”，没有天然解决下面这些问题：
-
-- 用户主动退出后，旧 token 怎么失效
-- 管理员封号后，旧 token 怎么立刻失效
-- 用户改密码后，旧 token 怎么立刻失效
-- 某台设备踢下线后，旧 token 怎么失效
-
-如果你完全纯无状态，就只能等 `exp` 到期。  
-所以生产里常见的做法是配一层“服务端可控状态”。
-
-## 三种常见 JWT 失效方案
-
-### 1. 黑名单
-
-把要失效的 `jti` 放进 Redis，接口校验通过后再查一遍是否在黑名单里。
-
-优点：
-
-- 容易理解
-- 适合少量强制踢下线场景
-
-缺点：
-
-- 重新引入状态
-- 需要处理黑名单过期和清理
-
-### 2. 用户级版本号
-
-用户表里维护 `token_version`。签发 token 时把版本写入 JWT，校验时对比当前用户版本。
-
-优点：
-
-- 适合“改密码后让所有旧 token 一次失效”
-- 不需要存每个 token
-
-缺点：
-
-- 每次请求通常需要查缓存或数据库
-- 只能做用户级失效，不能精确到单 token
-
-### 3. refresh token 持久化
-
-`access token` 短效无状态，`refresh token` 记录在 Redis / DB 里，支持续签、撤销、设备管理。
-
-优点：
-
-- 兼顾性能和可控性
-- 最适合 App / Web 长登录场景
-
-缺点：
-
-- 实现复杂度更高
-
-如果让我在业务系统里选，我通常优先推荐第 3 种。
-
-## 典型登录链路
-
-一个比较稳的链路一般长这样：
-
-### 1. 登录
-
-- 用户提交账号密码
-- 服务端校验密码
-- 生成 `access token`
-- 生成 `refresh token`
-- 把 `refresh token` 存 Redis / DB
-- 返回给前端
-
-### 2. 访问接口
-
-- 前端带 `Authorization: Bearer <access_token>`
-- 网关或应用过滤器解析 JWT
-- 校验签名、过期时间、必要 claims
-- 构造登录态放入上下文
-- 业务接口继续执行
-
-### 3. access token 过期
-
-- 前端调用刷新接口
-- 服务端校验 `refresh token`
-- 校验通过后重新签发新的 `access token`
-- 必要时轮换 `refresh token`
-
-### 4. 退出登录
-
-- 删除服务端存储的 `refresh token`
-- 如果要立即让当前 `access token` 失效，再写黑名单或提升版本号
-
-## access token 和 refresh token 怎么分工
-
-最稳的思路是把职责拆开：
+## access token 和 refresh token 分工
 
 ### access token
 
-- 生命周期短
-- 每次请求都带
-- 用来给接口鉴权
-- 尽量无状态
+特点：
+
+- 每次访问接口携带。
+- 有效期短。
+- 可以不落库。
+- 主要用于鉴权和解析用户身份。
+
+适合放：
+
+- `userId`。
+- `tenantId`。
+- `rolesVersion`。
+- 少量角色标识。
 
 ### refresh token
 
-- 生命周期长
-- 只在续签时使用
-- 必须更强可控
-- 最好存服务端
+特点：
 
-不要让 refresh token 也像 access token 一样到处传。  
-refresh token 的暴露面越小越好。
+- 只在刷新 token 时使用。
+- 有效期长。
+- 必须服务端可控。
+- 建议落库或 Redis。
 
-## 签名算法怎么选
+建议只存 hash：
 
-Java 里常见的是：
+```text
+refresh_token_hash = sha256(raw_refresh_token + server_salt)
+```
 
-- `HS256`
-- `RS256`
+表结构示例：
 
-### `HS256`
+```sql
+create table auth_refresh_token (
+    id bigint primary key,
+    user_id bigint not null,
+    token_hash varchar(128) not null,
+    device_id varchar(64),
+    expires_at datetime not null,
+    revoked_at datetime null,
+    created_at datetime not null,
+    unique key uk_token_hash(token_hash),
+    key idx_user_id(user_id)
+);
+```
 
-同一个密钥负责签名和验签。
+## 刷新链路
 
-优点：
+```text
+1. POST /auth/refresh
+2. 校验 refresh token 是否存在
+3. 校验是否过期、是否吊销、用户是否可用
+4. 吊销旧 refresh token
+5. 生成新的 access token
+6. 生成新的 refresh token
+7. 返回新的 token pair
+```
 
-- 简单
-- 性能好
+推荐 refresh token 轮换：
 
-缺点：
+```java
+@Transactional(rollbackFor = Exception.class)
+public TokenPair refresh(String rawRefreshToken) {
+    RefreshToken token = refreshTokenRepository.getValid(rawRefreshToken);
+    User user = userRepository.getActiveUser(token.userId());
 
-- 一旦密钥泄露，签发和校验都失守
-- 不适合很多服务共享验签但不该共享签发能力的场景
+    refreshTokenRepository.revoke(token.id());
 
-### `RS256`
+    String accessToken = jwtTokenService.createAccessToken(user);
+    String refreshToken = refreshTokenService.createAndSave(user.id(), token.deviceId());
 
-私钥签名，公钥验签。
-
-优点：
-
-- 更适合多服务、网关、第三方验签
-- 私钥只留在认证中心
-
-缺点：
-
-- 配置和密钥管理更复杂
-
-如果只是单体或小型内部服务，`HS256` 足够。  
-如果是微服务、网关统一验签、后面可能接外部系统，优先考虑 `RS256`。
-
-## Spring Boot 里 JWT 鉴权的推荐分层
-
-一个清晰的实现通常分这几层：
-
-### `JwtProperties`
-
-管理配置：
-
-- `secret` / `privateKey` / `publicKey`
-- `accessExpireSeconds`
-- `refreshExpireSeconds`
-- `issuer`
-
-### `JwtTokenService`
-
-负责：
-
-- 生成 access token
-- 生成 refresh token
-- 解析 token
-- 校验签名和过期
-
-### `LoginService`
-
-负责：
-
-- 密码校验
-- 登录成功后的 token 签发
-- refresh token 存储
-- 登出和续签
-
-### `JwtAuthenticationFilter`
-
-负责：
-
-- 从请求头拿 token
-- 调 `JwtTokenService` 校验
-- 构造认证对象塞进 `SecurityContext`
-
-### `SecurityConfig`
-
-负责：
-
-- 放行登录、刷新接口
-- 其余接口默认鉴权
-- 关闭 session 或明确 session 策略
-
-## 一个更稳的 claims 设计
-
-后端项目里比较实用的一版可以长这样：
-
-```json
-{
-  "sub": "10001",
-  "username": "alice",
-  "tenantId": "t01",
-  "roles": ["ADMIN"],
-  "tokenType": "access",
-  "tokenVersion": 3,
-  "jti": "2f4f9d5d-8b2e-4db0-b4b8-2ec3f4c2d4ab",
-  "iat": 1715400000,
-  "exp": 1715403600,
-  "iss": "grimoire-auth"
+    return new TokenPair(accessToken, refreshToken);
 }
 ```
 
-这里几个字段特别实用：
+如果旧 refresh token 被重复使用，可能是泄漏，建议吊销该设备所有 refresh token。
 
-- `tokenType`
-  避免把 refresh token 拿去访问业务接口
-- `tokenVersion`
-  方便改密码、封禁后整体失效
-- `jti`
-  方便审计、黑名单、问题追踪
+## 退出登录
 
-## 过滤器里要做什么，不要做什么
+退出不是只让前端删 token。
 
-JWT 过滤器适合做：
+标准动作：
 
-- 读取请求头
-- 判断是否存在 Bearer token
-- 解析和校验 token
-- 提取 claims
-- 构造当前认证用户
+```text
+1. 删除前端本地 token
+2. 服务端吊销 refresh token
+3. access token 剩余时间很短，可以自然过期
+4. 高安全场景，把 access token 的 jti 加入黑名单直到 exp
+```
 
-JWT 过滤器不适合做：
+黑名单 key：
 
-- 登录逻辑
-- 刷新 token
-- 太重的数据库查询
-- 太复杂的权限拼装
+```text
+jwt:blacklist:{jti} -> 1
+ttl = access token 剩余秒数
+```
 
-过滤器应该尽量薄，不然链路会越来越难排查。
+如果用户改密码、账号禁用、角色变化：
+
+- 提升 `rolesVersion` / `tokenVersion`。
+- 鉴权时比较 token 里的版本和用户当前版本。
+- 不一致直接 `401`。
+
+## Spring Security 配置
+
+依赖：
+
+```xml
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-security</artifactId>
+</dependency>
+```
+
+过滤器配置：
+
+```java
+@Configuration
+@EnableWebSecurity
+public class SecurityConfig {
+
+    @Bean
+    public SecurityFilterChain securityFilterChain(HttpSecurity http,
+                                                   JwtAuthenticationFilter jwtAuthenticationFilter)
+            throws Exception {
+        return http
+            .csrf(AbstractHttpConfigurer::disable)
+            .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            .authorizeHttpRequests(auth -> auth
+                .requestMatchers("/auth/login", "/auth/refresh").permitAll()
+                .requestMatchers("/actuator/health").permitAll()
+                .anyRequest().authenticated()
+            )
+            .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+            .build();
+    }
+}
+```
+
+注意：
+
+- 前后端分离 API 一般用无状态 session：`STATELESS`。
+- 只把登录、刷新、健康检查放开。
+- 如果是浏览器 Cookie 鉴权，不要随便关 CSRF。
+
+## JWT 过滤器
+
+```java
+@Component
+public class JwtAuthenticationFilter extends OncePerRequestFilter {
+
+    private final JwtTokenService jwtTokenService;
+
+    public JwtAuthenticationFilter(JwtTokenService jwtTokenService) {
+        this.jwtTokenService = jwtTokenService;
+    }
+
+    @Override
+    protected void doFilterInternal(HttpServletRequest request,
+                                    HttpServletResponse response,
+                                    FilterChain filterChain)
+            throws ServletException, IOException {
+        String token = resolveBearerToken(request);
+        if (!StringUtils.hasText(token)) {
+            filterChain.doFilter(request, response);
+            return;
+        }
+
+        try {
+            LoginUser loginUser = jwtTokenService.parseAccessToken(token);
+            UsernamePasswordAuthenticationToken authentication =
+                new UsernamePasswordAuthenticationToken(
+                    loginUser,
+                    null,
+                    loginUser.authorities()
+                );
+            authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+            SecurityContextHolder.getContext().setAuthentication(authentication);
+            filterChain.doFilter(request, response);
+        } catch (JwtAuthException exception) {
+            SecurityContextHolder.clearContext();
+            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+            response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+            response.getWriter().write("{\"code\":\"TOKEN_INVALID\",\"message\":\"登录已失效\"}");
+        }
+    }
+
+    private String resolveBearerToken(HttpServletRequest request) {
+        String authorization = request.getHeader(HttpHeaders.AUTHORIZATION);
+        if (!StringUtils.hasText(authorization) || !authorization.startsWith("Bearer ")) {
+            return null;
+        }
+        return authorization.substring(7);
+    }
+}
+```
+
+过滤器只做鉴权，不做业务：
+
+- 不创建用户。
+- 不刷新 token。
+- 不查复杂权限树。
+- 不写业务日志流水。
+
+## JwtTokenService 分层
+
+接口：
+
+```java
+public interface JwtTokenService {
+
+    String createAccessToken(User user);
+
+    LoginUser parseAccessToken(String token);
+}
+```
+
+解析时至少校验：
+
+```text
+签名
+exp
+iss
+aud
+typ == access
+jti 是否黑名单
+user 是否存在且启用
+rolesVersion 是否一致
+```
+
+伪代码：
+
+```java
+public LoginUser parseAccessToken(String token) {
+    JwtClaims claims = jwtSigner.verify(token);
+
+    if (!"access".equals(claims.tokenType())) {
+        throw new JwtAuthException("token type invalid");
+    }
+
+    if (blacklistService.contains(claims.jti())) {
+        throw new JwtAuthException("token revoked");
+    }
+
+    User user = userRepository.getActiveUser(claims.userId());
+    if (!Objects.equals(user.rolesVersion(), claims.rolesVersion())) {
+        throw new JwtAuthException("permission changed");
+    }
+
+    return LoginUser.from(user, claims);
+}
+```
+
+如果每次都查 DB，JWT 的性能收益会降低；可以折中：
+
+- 用户状态 / 权限版本放 Redis。
+- 黑名单只存剩余有效期。
+- access token 有效期缩短，减少强校验频率。
+
+## 权限怎么接
+
+`LoginUser`：
+
+```java
+public record LoginUser(
+    Long userId,
+    String tenantId,
+    List<String> permissions
+) {
+
+    public Collection<? extends GrantedAuthority> authorities() {
+        return permissions.stream()
+            .map(SimpleGrantedAuthority::new)
+            .toList();
+    }
+}
+```
+
+接口权限：
+
+```java
+@PreAuthorize("hasAuthority('user:create')")
+@PostMapping("/users")
+public ApiResult<Long> create(@Valid @RequestBody CreateUserRequest request) {
+    return ApiResult.ok(userService.createUser(request.toCommand()));
+}
+```
+
+数据权限仍然要在 Service 校验：
+
+```java
+if (!Objects.equals(order.getTenantId(), loginUser.tenantId())) {
+    throw new BizException(ErrorCode.COMMON_FORBIDDEN);
+}
+```
+
+方法权限只解决“能不能进这个接口”，不自动解决“能不能操作这条数据”。
+
+## token 放哪里
+
+### 前后端分离
+
+常见：
+
+```text
+Authorization: Bearer <accessToken>
+```
+
+refresh token 更推荐：
+
+- HttpOnly Cookie。
+- Secure。
+- SameSite 合理配置。
+- 或移动端安全存储。
+
+如果 access token 存 `localStorage`，要意识到 XSS 风险。
+
+### 浏览器后台系统
+
+可以考虑：
+
+- access token 放内存。
+- refresh token 放 HttpOnly Cookie。
+- 刷新页面后用 refresh token 换 access token。
+- 配合 CSRF 防护。
+
+### App / 小程序
+
+放系统安全存储，不要明文日志打印。
+
+## 签名算法
+
+### HS256
+
+对称密钥：
+
+- 签发和校验用同一个密钥。
+- 单体项目简单。
+- 多服务共享密钥时泄漏风险更高。
+
+适合：
+
+- 单应用。
+- 内部系统。
+- 服务数量少。
+
+### RS256
+
+非对称密钥：
+
+- 私钥签发。
+- 公钥校验。
+- 多个资源服务只需要公钥。
+
+适合：
+
+- 微服务。
+- 认证中心独立。
+- 多系统共享登录态。
+
+生产建议：
+
+- 密钥从配置中心 / KMS / 环境变量加载。
+- 支持密钥轮换。
+- 不把密钥提交到 Git。
+
+## 什么时候用内置 Resource Server
+
+如果系统是“认证中心签发 JWT，业务服务只校验 Bearer Token”，优先考虑 Spring Security OAuth2 Resource Server：
+
+```xml
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
+</dependency>
+```
+
+配置：
+
+```java
+@Bean
+SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    return http
+        .authorizeHttpRequests(auth -> auth
+            .requestMatchers("/actuator/health").permitAll()
+            .anyRequest().authenticated()
+        )
+        .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()))
+        .build();
+}
+```
+
+这时一般不自己写 `JwtAuthenticationFilter`，而是配置 `JwtDecoder`、`JwtAuthenticationConverter`。
 
 ## 常见坑
 
-### 1. 把用户完整权限列表塞进 JWT
+### access token 有效期太长
 
-后果是：
+一旦泄漏，很久都有效。后台系统尤其不要搞几天有效期。
 
-- token 很大
-- 权限一改，旧 token 全过时
-- 后面很难演进
+### 只校验签名
 
-更好的做法是只放角色或权限版本号。
+还要校验：
 
-### 2. access token 过期时间设太长
+- `exp`。
+- `iss`。
+- `aud`。
+- `typ`。
+- `jti`。
+- 用户状态。
+- 权限版本。
 
-很多系统一上来就给 `7d`、`30d`。
+### 权限列表塞太大
 
-这会让：
+权限变更后旧 token 不会自动变，token 也会变大。更稳的是放 `rolesVersion`，权限从缓存读取。
 
-- 泄露窗口变大
-- 封禁和踢下线变难
+### 退出只删前端 token
 
-更合理的是：
+refresh token 必须服务端吊销；access token 需要看安全等级决定是否黑名单。
 
-- access token 短
-- refresh token 长
+### refresh token 不轮换
 
-### 3. 只校验签名，不校验 tokenType / issuer / audience
+长期不变的 refresh token 泄漏后风险很高。刷新时建议旧的作废，新的继续用。
 
-至少要校验：
+### 在日志里打印 token
 
-- 签名
-- `exp`
-- `tokenType`
-- `iss`
+请求日志、异常日志、网关日志都要脱敏：
 
-跨系统或网关复杂场景，再考虑 `aud`。
+```text
+Authorization: Bearer eyJ...<masked>
+```
 
-### 4. 登出时只让前端删本地 token
+## 检查清单
 
-这不是真正的登出。  
-真正的登出至少应该让服务端掌握续签能力的那一层失效，也就是 refresh token 失效。
+- [ ] access token 有效期短。
+- [ ] refresh token 服务端可吊销。
+- [ ] refresh token 存 hash，不存明文。
+- [ ] claims 校验了 `iss`、`aud`、`typ`、`exp`。
+- [ ] 改密码、禁用账号、改角色能让旧 token 失效。
+- [ ] 过滤器成功时写入 `SecurityContext`，失败时清理上下文。
+- [ ] 登录、刷新、退出接口边界清楚。
+- [ ] token 没有打印到日志。
+- [ ] 密钥没有提交到 Git。
+- [ ] 数据权限在 Service 再校验一次。
 
-### 5. 改密码后旧 token 还能一直用
+## 参考
 
-这是经典安全漏洞。  
-最简单的补法就是引入 `tokenVersion`。
-
-## Web 场景下 token 放哪
-
-这块没有绝对答案，但可以这样记：
-
-### 如果是前后端分离接口
-
-常见做法：
-
-- access token 放内存
-- refresh token 放安全 cookie 或更受控存储
-
-### 如果是浏览器业务后台
-
-要重点考虑：
-
-- XSS
-- CSRF
-
-如果把 token 直接长期放 `localStorage`，实现简单，但 XSS 风险更大。  
-如果放 `HttpOnly Cookie`，要再认真处理 CSRF。
-
-所以这里不是 JWT 自己的问题，而是整个前端安全模型的问题。
-
-## 什么时候不建议用 JWT
-
-下面这些场景，不一定适合 JWT：
-
-- 强依赖服务端会话管理
-- 频繁需要即时踢下线
-- 权限变化非常频繁
-- 很多内部系统其实单体部署，没必要强上无状态 token
-
-这时候传统 session 反而可能更简单、更稳。
-
-JWT 不是“更高级”，只是更适合某些架构形态。
-
-## 一版比较推荐的项目实践
-
-如果让我给一个普通 Spring Boot 业务系统定方案，我会这样选：
-
-1. 登录成功签发 `access token + refresh token`
-2. `access token` 有效期 `1h`
-3. `refresh token` 有效期 `14d`
-4. `access token` 放：
-   - `sub`
-   - `roles`
-   - `tokenType`
-   - `tokenVersion`
-   - `jti`
-5. `refresh token` 存 Redis，按用户和设备维度管理
-6. 改密码、封禁、管理员踢人时，提升 `tokenVersion`
-7. 关键接口再结合细粒度权限判断，不只依赖 JWT 角色
-
-这套方案不是最轻，但对业务系统来说通常最稳。
-
-## 最后记住一句话
-
-**JWT 只是令牌格式，不是完整鉴权方案。**  
-真正的难点从来不是“怎么生成 token”，而是：
-
-- 怎么续签
-- 怎么失效
-- 怎么收权
-- 怎么审计
-- 怎么和 Spring Security、Redis、网关一起配合
-
-如果这些一起设计，JWT 才会真正好用。
+- [Spring Security Servlet Architecture](https://docs.enterprise.spring.io/spring-security/reference/6.2/servlet/architecture.html)
+- [Spring Security OAuth2 Resource Server](https://docs.spring.io/spring-security/reference/servlet/oauth2/resource-server/index.html)

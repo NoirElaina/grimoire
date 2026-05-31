@@ -5,108 +5,99 @@ sidebarTitle: OpenFeign
 
 # OpenFeign 使用笔记
 
-OpenFeign 不是“远程调用更方便一点”的语法糖，它本质上是在帮你把**HTTP 调用契约、序列化规则、容错策略和调用治理**收进一层声明式客户端里。
-
-如果只把它理解成“少写 `RestTemplate`”，项目后面通常会踩这几类坑：
-
-- 接口改了，调用方无感知地挂掉
-- 把下游 DTO 直接透传进上游 Controller
-- 超时和重试没设计，线上一慢就全链路堆死
-- 日志、鉴权头、幂等头、trace 信息到处手写
-
-所以 OpenFeign 真正的价值，不是省几行代码，而是把服务间调用做成**可统一治理的客户端层**。
-
-## 先说结论
-
-在 Spring Cloud 体系里，OpenFeign 更稳的用法通常是：
-
-1. 一个下游服务对应一个清晰的 Feign Client。
-2. Client 里只描述远程接口契约，不写业务逻辑。
-3. 请求 DTO、响应 DTO 和本地业务对象分开。
-4. 超时、错误解码、鉴权头、日志级别统一配置。
-5. 谨慎使用 fallback，不要拿它掩盖真实故障。
-6. 涉及库存、支付、状态流转这类关键链路时，优先保证幂等和补偿，不迷信“重试就能解决”。
-
-一句话就是：
-
-**把 OpenFeign 当成“远程服务访问层”，不要把它写成“会发 HTTP 的 Service”。**
-
-## 它到底解决什么
-
-如果不用 OpenFeign，服务 A 调服务 B 往往会堆这些样板：
-
-- 拼 URL
-- 组请求头
-- 发 GET / POST
-- 反序列化返回值
-- 判断状态码
-- 手动做异常转换
-
-OpenFeign 把这套东西抽象成接口：
-
-```java
-@FeignClient(name = "user-service")
-public interface UserClient {
-
-    @GetMapping("/users/{id}")
-    UserDTO getById(@PathVariable Long id);
-}
-```
-
-调用方只要像本地方法一样调：
-
-```java
-UserDTO user = userClient.getById(1001L);
-```
-
-但这里一定要记住：
-
-**它看起来像本地方法，实际上仍然是远程调用。**
-
-也就是说它仍然有这些特性：
-
-- 有网络延迟
-- 会超时
-- 会失败
-- 会返回异常状态码
-- 会受下游发布影响
-
-这是 OpenFeign 最容易让人掉以轻心的地方。
-
-## 一个最小落地结构
-
-一个比较清晰的项目里，通常可以这样放：
+OpenFeign 适合把“服务间 HTTP 调用”收敛成声明式客户端：
 
 ```text
-com.example.app
-├─ controller
-├─ service
-├─ client
-│  ├─ user
-│  │  ├─ UserClient.java
-│  │  ├─ UserClientConfig.java
-│  │  ├─ dto
-│  │  └─ fallback
-├─ domain
-├─ dto
-└─ config
+Service
+  -> Feign Client
+  -> HTTP
+  -> Downstream Service
 ```
 
-这里最关键的是 `client` 目录要独立出来。  
-因为它不是普通 Service，也不是基础工具类，而是**面向外部系统的适配层**。
+它看起来像本地方法调用，但底层仍然是远程调用。
+所以这篇不讲“Feign 很方便”，只记项目里怎么写才稳：客户端怎么定义、超时怎么配、请求头怎么透传、异常怎么业务化、fallback 和重试什么时候不能乱用。
 
-## 最基本的接法
+## 先给结论
 
-### 1. 开启 Feign
+后端项目里用 OpenFeign，先按这套原则落地：
+
+1. 一个下游服务一个 `client` 包。
+2. `@FeignClient` 只描述远程接口契约，不写业务逻辑。
+3. Feign DTO、领域对象、前端 VO 分开。
+4. 超时必须显式配置，不要相信默认值。
+5. trace、tenant、token 这类上下文用 `RequestInterceptor` 统一透传。
+6. HTTP 错误用 `ErrorDecoder` 转成业务异常。
+7. fallback 只用于弱依赖读接口，关键写链路不要假成功。
+8. 重试只给幂等接口，不能给扣款、下单、发券这种操作乱开。
+9. 循环里不要逐条调 Feign，优先让下游提供批量接口。
+10. 生产环境日志默认别开 `full`，注意脱敏。
+
+一句话：
+
+**OpenFeign 是远程服务访问层，不是本地 Service 的平替。**
+
+## 依赖和开启 Feign
+
+Spring Cloud 项目里一般引入：
+
+```xml
+<dependency>
+    <groupId>org.springframework.cloud</groupId>
+    <artifactId>spring-cloud-starter-openfeign</artifactId>
+</dependency>
+```
+
+启动类开启 Feign：
 
 ```java
 @SpringBootApplication
-@EnableFeignClients(basePackages = "com.example.app.client")
+@EnableFeignClients(basePackages = "com.example.order.client")
 public class OrderApplication {
+
+    public static void main(String[] args) {
+        SpringApplication.run(OrderApplication.class, args);
+    }
 }
 ```
 
-### 2. 定义客户端
+建议显式指定 `basePackages`。
+不要让 Feign 扫描范围过大，后面多模块项目里会更难控制。
+
+## 推荐目录结构
+
+以订单服务调用用户服务为例：
+
+```text
+com.example.order
+├─ controller
+├─ service
+├─ domain
+├─ repository
+├─ client
+│  └─ user
+│     ├─ UserClient.java
+│     ├─ UserClientConfig.java
+│     ├─ UserClientErrorDecoder.java
+│     ├─ UserClientFallbackFactory.java
+│     └─ dto
+│        ├─ UserBatchQueryRequest.java
+│        └─ UserProfileResponse.java
+└─ config
+   └─ FeignCommonConfig.java
+```
+
+`client` 包是外部服务适配层。
+
+它不应该放：
+
+- 本地业务编排
+- Controller 返回 VO
+- 数据库 Entity
+- 复杂补偿逻辑
+
+它只负责把远程接口契约稳定地封装起来。
+
+## 最小 Client
 
 ```java
 @FeignClient(
@@ -119,145 +110,153 @@ public interface UserClient {
     @GetMapping("/{id}")
     UserProfileResponse getById(@PathVariable("id") Long id);
 
-    @PostMapping("/query")
-    List<UserProfileResponse> query(@RequestBody UserQueryRequest request);
+    @PostMapping("/batch-query")
+    List<UserProfileResponse> batchQuery(@RequestBody UserBatchQueryRequest request);
 }
 ```
 
-### 3. 在业务里调用
+业务层调用：
 
 ```java
 @Service
-public class OrderService {
+public class OrderQueryService {
 
+    private final OrderRepository orderRepository;
     private final UserClient userClient;
 
-    public OrderService(UserClient userClient) {
+    public OrderQueryService(OrderRepository orderRepository, UserClient userClient) {
+        this.orderRepository = orderRepository;
         this.userClient = userClient;
     }
 
-    public OrderDetailVO getOrderDetail(Long orderId) {
-        Order order = loadOrder(orderId);
+    public OrderDetailVO getDetail(Long orderId) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new BizException("订单不存在"));
+
         UserProfileResponse user = userClient.getById(order.getUserId());
-        return assemble(order, user);
+
+        return OrderDetailVO.from(order, user);
     }
 }
 ```
 
-这个写法的关键不是“调用更短了”，而是：
+注意这里的调用虽然像本地方法：
 
-- 下游契约收敛到 `UserClient`
-- 远程请求配置收敛到 `UserClientConfig`
-- 业务层只关心“我要什么数据”
+```java
+userClient.getById(order.getUserId())
+```
 
-## `name`、`url`、`path` 分别是什么
+但它背后有网络、超时、序列化、下游异常和版本兼容问题。
 
-这是很多人一开始会混的。
+## `name`、`url`、`path`
 
 ### `name`
-
-通常写服务名，用于服务发现、负载均衡、监控标识。
 
 ```java
 @FeignClient(name = "user-service")
 ```
 
-如果接了 Nacos、Eureka、Consul 之类注册中心，OpenFeign 一般会用它去找实例。
+通常表示服务名。
+
+如果接了 Nacos、Eureka、Consul 这类注册中心，`name` 会用于服务发现和负载均衡。
 
 ### `url`
 
-直接写死目标地址：
-
 ```java
-@FeignClient(name = "user-service", url = "${remote.user-service.url}")
+@FeignClient(
+        name = "third-party-pay",
+        url = "${remote.pay.url}"
+)
 ```
+
+`url` 表示直连地址。
 
 适合：
 
-- 直连第三方 HTTP 接口
-- 本地开发 / 联调环境
-- 没有服务注册中心的项目
+- 第三方 HTTP API
+- 本地联调
+- 没有服务注册中心的系统
+
+有 `url` 时，通常不会再走注册中心按服务名找实例。
 
 ### `path`
 
-给这个 Client 统一加路径前缀：
-
 ```java
-@FeignClient(name = "user-service", path = "/api/users")
+@FeignClient(
+        name = "user-service",
+        path = "/api/users"
+)
 ```
 
-这样方法上就不用每次都把完整前缀再写一遍。
+`path` 是这个 Client 的统一路径前缀。
 
-## 为什么 DTO 一定要分开
+方法上只写剩余路径：
 
-这是 Feign 项目里最常见的结构性问题之一。
+```java
+@GetMapping("/{id}")
+UserProfileResponse getById(@PathVariable("id") Long id);
+```
 
-错误写法通常是：
+## DTO 要分开
 
-- 下游返回什么字段，上游就照单全收
-- Feign Response 直接给 Controller 返回
-- 本地数据库 Entity 直接当远程请求 DTO
+Feign DTO 只代表远程接口契约。
 
-这样会带来三个问题：
+不要这样：
 
-1. 下游字段变化会直接污染上游接口。
-2. 存储模型、远程契约、返回视图耦在一起。
-3. 后面很难做兼容、裁剪和灰度。
+```java
+@GetMapping("/{id}")
+UserVO getById(@PathVariable("id") Long id);
+```
 
-更稳的做法是分 3 层：
+然后 Controller 直接返回：
 
-- `Feign Request/Response DTO`
-- 本地领域对象或业务对象
-- Controller 的 `VO`
+```java
+return userClient.getById(id);
+```
 
-也就是说：
+更稳：
 
-**Feign DTO 只为“远程契约”负责，不为整个系统负责。**
+```java
+public record UserProfileResponse(
+        Long id,
+        String nickname,
+        String avatar,
+        Integer status
+) {
+}
+```
 
-## OpenFeign 和 RestTemplate / WebClient 的区别
+本地 VO 自己组装：
 
-### 相比 `RestTemplate`
+```java
+public record OrderDetailVO(
+        Long orderId,
+        String orderNo,
+        String buyerName,
+        BigDecimal amount
+) {
+    public static OrderDetailVO from(Order order, UserProfileResponse user) {
+        return new OrderDetailVO(
+                order.getId(),
+                order.getOrderNo(),
+                user.nickname(),
+                order.getAmount()
+        );
+    }
+}
+```
 
-OpenFeign 更适合：
+原因很简单：
 
-- 服务间调用契约明确
-- 调用点很多
-- 想统一配置超时、拦截器、鉴权头、日志
+- 下游响应结构不等于你的前端展示结构。
+- 下游字段变化不能直接污染你的 Controller。
+- 本地领域对象不应该被远程契约牵着走。
 
-`RestTemplate` 更像手写 HTTP。
+## 超时配置
 
-### 相比 `WebClient`
+远程调用必须配置超时。
 
-`WebClient` 更适合：
-
-- 响应式链路
-- 流式处理
-- 更细粒度控制请求过程
-
-OpenFeign 更适合：
-
-- 常规同步 RPC 风格调用
-- 内部微服务接口
-- 更强调声明式契约
-
-如果你的项目本来就是普通 Spring MVC，OpenFeign 通常比 `WebClient` 更自然。
-
-## 超时为什么一定要先配
-
-很多团队接 Feign 最大的问题不是“调不通”，而是**默认太乐观**。
-
-远程调用如果没配清楚超时，后果通常是：
-
-- 下游一慢，上游线程被卡住
-- Tomcat 线程池被占满
-- 数据库连接、消息消费、事务链路一起被拖慢
-
-至少应该明确两类超时：
-
-- `connectTimeout`
-- `readTimeout`
-
-典型配置例如：
+全局默认：
 
 ```yaml
 spring:
@@ -271,277 +270,488 @@ spring:
             loggerLevel: basic
 ```
 
-经验上：
+单个 Client 覆盖：
 
-- 内部服务同步调用，不要把超时放太长
-- 超时值要结合接口 SLA，不是越大越稳
-
-很多业务接口里，`2s / 3s / 5s` 已经是很大的差别了。
-
-## 拦截器最适合做什么
-
-OpenFeign 的 `RequestInterceptor` 很适合做统一请求头治理。
-
-最常见的包括：
-
-- `Authorization`
-- `X-Request-Id`
-- `X-Trace-Id`
-- `X-Tenant-Id`
-- `X-User-Id`
-- 幂等相关 header
-
-例如：
-
-```java
-@Bean
-public RequestInterceptor requestInterceptor() {
-    return template -> {
-        template.header("X-Trace-Id", TraceContext.getTraceId());
-        template.header("X-Tenant-Id", TenantContext.getTenantId());
-    };
-}
+```yaml
+spring:
+  cloud:
+    openfeign:
+      client:
+        config:
+          user-service:
+            connectTimeout: 1000
+            readTimeout: 2000
+            loggerLevel: basic
+          third-party-pay:
+            connectTimeout: 3000
+            readTimeout: 8000
+            loggerLevel: basic
 ```
 
-这层特别适合做“跨服务上下文透传”，不要每个业务方法里手动拼 header。
+两个时间要分清：
 
-## 错误处理不要只看 200
+| 配置 | 含义 |
+| --- | --- |
+| `connectTimeout` | 建立连接最多等多久 |
+| `readTimeout` | 请求发出后，等响应最多多久 |
 
-远程调用里，最危险的误区之一是：  
-“只要能反序列化成功就算没问题”。
+经验：
 
-实际上你至少要区分：
+- 内部服务同步调用不要配太长。
+- 支付、第三方接口可以按 SLA 单独放宽。
+- 超时不是越大越稳，越大越容易拖垮上游线程。
 
-- 网络失败
-- 超时
-- 4xx 请求错误
-- 5xx 服务错误
-- 业务错误码
+## Client 配置类
 
-更稳的做法通常是加一个 `ErrorDecoder`：
+给用户服务单独配置：
 
 ```java
-public class UserClientErrorDecoder implements ErrorDecoder {
+public class UserClientConfig {
 
-    @Override
-    public Exception decode(String methodKey, Response response) {
-        if (response.status() == 404) {
-            return new UserNotFoundException("user not found");
-        }
-        if (response.status() >= 500) {
-            return new RemoteServiceException("user-service error");
-        }
-        return new Default().decode(methodKey, response);
+    @Bean
+    public ErrorDecoder userClientErrorDecoder() {
+        return new UserClientErrorDecoder();
+    }
+
+    @Bean
+    public RequestInterceptor userClientRequestInterceptor() {
+        return template -> {
+            template.header("X-Client-Name", "order-service");
+        };
     }
 }
 ```
 
-这样业务层拿到的是**有语义的异常**，不是一坨通用 HTTP 错误。
+注意：如果这个配置类被全局扫描成普通 Spring Bean，它可能影响所有 Feign Client。
+所以项目里要明确约定：
 
-## fallback 到底该不该用
+- 公共配置放 `FeignCommonConfig`
+- Client 专属配置放对应 `client.xxx` 包
+- 不要把专属配置类随手丢到全局 `config` 包里
 
-这块一定要谨慎。
+## 请求头透传
 
-很多项目一看到 Feign 就会顺手加：
+公共上下文用 `RequestInterceptor`：
 
 ```java
-@FeignClient(name = "user-service", fallback = UserClientFallback.class)
+@Configuration
+public class FeignCommonConfig {
+
+    @Bean
+    public RequestInterceptor traceRequestInterceptor() {
+        return template -> {
+            putHeaderIfPresent(template, "X-Trace-Id", TraceContext.getTraceId());
+            putHeaderIfPresent(template, "X-Tenant-Id", TenantContext.getTenantId());
+            putHeaderIfPresent(template, "X-User-Id", UserContext.getUserId());
+        };
+    }
+
+    private void putHeaderIfPresent(RequestTemplate template, String name, String value) {
+        if (StringUtils.hasText(value)) {
+            template.header(name, value);
+        }
+    }
+}
 ```
 
-然后 fallback 里直接返回默认对象、空列表、假成功。
+适合统一透传：
 
-这很危险。  
-因为它可能把真正的远程故障“吃掉”，最后业务悄悄错了，但系统看起来没报错。
+- `X-Trace-Id`
+- `X-Request-Id`
+- `X-Tenant-Id`
+- `X-User-Id`
+- `Authorization`
+- 幂等 Key
 
-### 适合 fallback 的场景
+不建议每个业务方法里手动拼 header。
 
-- 非核心查询型接口
-- 允许降级展示
-- 推荐位、标签、画像补充这类弱依赖数据
+如果是第三方接口鉴权，建议放在对应 Client 配置里，不要混进全局拦截器。
 
-### 不适合 fallback 的场景
+## 错误处理：`ErrorDecoder`
+
+Feign 默认抛出来的异常通常太泛。
+
+更稳的是把 HTTP 错误转换成业务能理解的异常：
+
+```java
+public class UserClientErrorDecoder implements ErrorDecoder {
+
+    private final ErrorDecoder defaultErrorDecoder = new Default();
+
+    @Override
+    public Exception decode(String methodKey, Response response) {
+        if (response.status() == 404) {
+            return new RemoteUserNotFoundException("用户不存在");
+        }
+
+        if (response.status() == 429) {
+            return new RemoteRateLimitException("用户服务限流");
+        }
+
+        if (response.status() >= 500) {
+            return new RemoteServiceException("用户服务异常");
+        }
+
+        return defaultErrorDecoder.decode(methodKey, response);
+    }
+}
+```
+
+业务层就可以按异常类型处理：
+
+```java
+try {
+    UserProfileResponse user = userClient.getById(userId);
+    return UserVO.from(user);
+} catch (RemoteUserNotFoundException exception) {
+    throw new BizException("用户不存在");
+} catch (RemoteServiceException exception) {
+    throw new BizException("用户服务暂时不可用");
+}
+```
+
+错误要尽早业务化。
+不要让上层到处判断 `FeignException.status()`。
+
+## 统一响应体怎么处理
+
+很多内部接口会返回统一结构：
+
+```json
+{
+  "code": "0",
+  "message": "success",
+  "data": {}
+}
+```
+
+Feign Client 可以直接声明包装响应：
+
+```java
+@GetMapping("/{id}")
+ApiResponse<UserProfileResponse> getById(@PathVariable("id") Long id);
+```
+
+业务层拆开：
+
+```java
+ApiResponse<UserProfileResponse> response = userClient.getById(userId);
+
+if (!response.success()) {
+    throw new RemoteBusinessException(response.code(), response.message());
+}
+
+UserProfileResponse user = response.data();
+```
+
+也可以自定义 Decoder 做统一拆包，但不要一开始就过度封装。
+如果团队还没统一好错误模型，显式处理反而更清楚。
+
+## Fallback：优先用 `FallbackFactory`
+
+如果要降级，优先用 `FallbackFactory`，因为它能拿到失败原因。
+
+```java
+@FeignClient(
+        name = "user-service",
+        path = "/api/users",
+        fallbackFactory = UserClientFallbackFactory.class
+)
+public interface UserClient {
+
+    @GetMapping("/{id}")
+    UserProfileResponse getById(@PathVariable("id") Long id);
+}
+```
+
+```java
+@Component
+public class UserClientFallbackFactory implements FallbackFactory<UserClient> {
+
+    @Override
+    public UserClient create(Throwable cause) {
+        return new UserClient() {
+            @Override
+            public UserProfileResponse getById(Long id) {
+                throw new RemoteServiceUnavailableException("用户服务不可用", cause);
+            }
+        };
+    }
+}
+```
+
+不要写这种假成功：
+
+```java
+return new UserProfileResponse(id, "默认用户", "", 1);
+```
+
+除非业务明确允许降级展示。
+
+## 什么时候可以 fallback
+
+适合 fallback：
+
+- 推荐内容
+- 用户头像、标签、画像补充
+- 非核心展示字段
+- 失败后可以展示默认值的查询
+
+不适合 fallback：
 
 - 下单
 - 扣库存
-- 支付状态
+- 扣余额
+- 支付状态查询
+- 权限判断
 - 审批流转
-- 关键身份与权限判断
 
-核心链路里，更好的思路通常是：
+核心链路宁愿失败得明确，也不要伪成功。
 
-- 明确失败
-- 走补偿
-- 走重试队列
-- 走人工兜底
+因为伪成功会让数据状态变脏，后面补偿更痛苦。
 
-而不是“远程挂了我就返回个空对象凑合一下”。
+## 重试和幂等
 
-## 重试不要乱开
+不要一看到超时就开重试。
 
-重试看起来很合理，但它天然带风险。
+可以考虑重试：
 
-因为很多请求不是天然幂等的，比如：
+- GET 查询
+- 幂等的状态查询
+- 明确支持幂等 Key 的 POST
+- 临时网络抖动
+
+不要随便重试：
 
 - 创建订单
-- 扣减余额
+- 扣余额
+- 发优惠券
+- 创建支付单
 - 发送短信
-- 推送消息
 
-如果你在客户端层无脑重试，可能会把一次故障放大成：
+如果必须重试，先设计幂等：
 
-- 重复创建
-- 重复扣款
-- 重复通知
+```java
+@PostMapping("/orders")
+CreateOrderResponse createOrder(
+        @RequestHeader("Idempotency-Key") String idempotencyKey,
+        @RequestBody CreateOrderRequest request
+);
+```
 
-所以只有在下面这些条件成立时，重试才比较稳：
+业务调用：
 
-1. 请求本身幂等。
-2. 下游明确允许重试。
-3. 你清楚在哪些异常上重试。
-4. 重试次数和退避策略可控。
+```java
+String idempotencyKey = "order:create:" + command.requestId();
+orderClient.createOrder(idempotencyKey, request);
+```
 
-否则宁愿失败得明确一点，也不要“自动帮你多试几次”。
+没有幂等保障的写接口，不要靠客户端重试赌运气。
 
-## 常见配置怎么分层
+## 避免 N+1 远程调用
 
-一个比较稳的做法是分三层：
+错误示例：
 
-### 全局默认配置
+```java
+List<OrderDetailVO> detailList = orders.stream()
+        .map(order -> {
+            UserProfileResponse user = userClient.getById(order.getUserId());
+            return OrderDetailVO.from(order, user);
+        })
+        .toList();
+```
 
-统一放：
+100 条订单就可能调用 100 次用户服务。
 
-- 超时
-- 日志级别
-- 编码解码器
-- 公共拦截器
+更稳的是让下游提供批量接口：
 
-### Client 级配置
+```java
+@PostMapping("/batch-query")
+List<UserProfileResponse> batchQuery(@RequestBody UserBatchQueryRequest request);
+```
 
-每个下游服务可以单独覆盖：
+调用方先聚合 ID：
 
-- 特殊鉴权
-- 特殊错误解码
-- 特殊序列化规则
+```java
+List<Long> userIds = orders.stream()
+        .map(Order::getUserId)
+        .filter(Objects::nonNull)
+        .distinct()
+        .toList();
 
-### 业务层规则
+List<UserProfileResponse> users = userClient.batchQuery(new UserBatchQueryRequest(userIds));
 
-放在 Service 层：
+Map<Long, UserProfileResponse> userMap = users.stream()
+        .collect(Collectors.toMap(
+                UserProfileResponse::id,
+                Function.identity(),
+                (oldValue, newValue) -> oldValue
+        ));
 
-- 调用顺序
-- 失败补偿
-- 幂等策略
-- 聚合装配
+List<OrderDetailVO> detailList = orders.stream()
+        .map(order -> OrderDetailVO.from(order, userMap.get(order.getUserId())))
+        .toList();
+```
 
-不要把业务补偿和降级决策塞进 Feign 配置类里。
+服务间调用最怕“写起来像本地循环”。
+每一个 Feign 方法调用都是真 HTTP。
 
-## 日志别开太猛
+## 日志级别
 
-Feign 支持不同日志级别，比如：
+Feign 常见日志级别：
 
-- `none`
-- `basic`
-- `headers`
-- `full`
+| 级别 | 内容 |
+| --- | --- |
+| `none` | 不记录 |
+| `basic` | 方法、URL、状态码、耗时 |
+| `headers` | 再加请求和响应头 |
+| `full` | 再加 body 和 metadata |
 
-生产环境一般更推荐：
+生产环境建议：
 
-- 默认 `basic`
-- 排障时针对单个 Client 临时加细
+```yaml
+spring:
+  cloud:
+    openfeign:
+      client:
+        config:
+          default:
+            loggerLevel: basic
+```
 
-因为 `full` 很容易带来两个问题：
+只在排查单个 Client 时临时开 `full`。
 
-1. 日志量暴涨
-2. 敏感字段泄露
+原因：
 
-特别是用户信息、token、请求体里有隐私字段时，要非常克制。
+- body 可能很大
+- token 和手机号可能泄露
+- 日志量会暴涨
+- 慢接口会被日志进一步拖慢
 
-## 服务间调用为什么不要层层嵌套
+如果必须打请求响应 body，要先做脱敏。
 
-这也是 Feign 用久了很容易出的问题。
+## 服务间调用不要层层套娃
 
-例如：
+危险链路：
 
-- `order-service` 调 `user-service`
-- `user-service` 再调 `permission-service`
-- `permission-service` 再调 `tenant-service`
+```text
+order-service
+  -> user-service
+    -> permission-service
+      -> tenant-service
+```
 
-最后一个请求串 4 层，任何一层慢一点，整体就明显抖动。
+问题：
 
-所以服务间调用要尽量避免：
+- 延迟叠加
+- 超时难配置
+- 一层失败拖垮整条链
+- 排查时链路太长
 
-- Controller 聚合太重
-- Service 里多层串行远程调用
-- 一个请求里反复调同一个下游
+改法：
 
-更稳的思路通常是：
+- 能批量就批量。
+- 能缓存就缓存。
+- 能异步就异步。
+- 聚合逻辑尽量收敛在明确的应用服务里。
+- 不要一个接口里反复调用同一个下游。
 
-- 能批量就批量
-- 能本地缓存就缓存
-- 能异步就异步
-- 能收敛聚合就收敛
+OpenFeign 只是降低调用成本，不代表应该增加调用次数。
 
-OpenFeign 只是让调用更容易写，不代表应该更频繁地调。
+## Feign Client 里不要写业务逻辑
+
+不要这样：
+
+```java
+@FeignClient(name = "user-service")
+public interface UserClient {
+
+    @GetMapping("/api/users/{id}")
+    UserProfileResponse getById(@PathVariable("id") Long id);
+
+    default UserProfileResponse getRequiredUser(Long id) {
+        UserProfileResponse user = getById(id);
+        if (user == null) {
+            throw new BizException("用户不存在");
+        }
+        return user;
+    }
+}
+```
+
+Client 只描述远程接口。
+
+业务语义放 Service：
+
+```java
+public UserProfileResponse getRequiredUser(Long userId) {
+    UserProfileResponse user = userClient.getById(userId);
+    if (user == null) {
+        throw new BizException("用户不存在");
+    }
+    return user;
+}
+```
+
+这样远程契约和本地业务规则不会混在一起。
 
 ## 常见坑
 
-### 1. 把 Feign 返回对象直接返回给前端
+### 1. Feign 返回对象直接返回给前端
 
-这样会导致上下游契约耦合得非常死。  
-更稳的做法是先转成本地 VO。
+下游响应结构会污染你的前端接口。
+要转成本地 VO。
 
-### 2. 在循环里逐条调用远程接口
+### 2. 循环里逐条远程调用
 
-典型 N+1 远程调用问题。  
-例如 100 条订单，循环调 100 次用户服务。
+这是 N+1 HTTP 调用。
+让下游提供批量接口。
 
-更好的做法是：
+### 3. 关键链路 fallback 假成功
 
-- 下游提供批量接口
-- 本地先聚合 ID 再一次查
+下单、支付、扣库存、权限判断不要返回默认值糊弄过去。
 
-### 3. 认为 fallback 就是高可用
+### 4. 没配超时
 
-很多 fallback 只是把错误藏起来，不是把问题解决了。
+下游一慢，上游线程池也会被拖住。
 
-### 4. 忽略版本兼容
+### 5. 错误没有业务化
 
-下游接口字段改名、结构变更、枚举扩展后，上游很容易直接炸。  
-所以 Feign 契约也要做版本意识，不是永远一版接口打天下。
+所有异常都抛 `FeignException`，Service 层就没法做清晰处理。
 
-### 5. 远程异常没有业务化
+### 6. 日志开 `full` 不脱敏
 
-最后所有错误都变成：
+容易泄露 token、手机号、身份证、地址等敏感信息。
 
-- `FeignException`
-- `500 Internal Server Error`
+### 7. 写接口无幂等还开启重试
 
-这会让上层根本没法做正确处理。  
-错误要尽早转换成业务可理解的异常。
+可能重复创建、重复扣款、重复发券。
 
-## 一种比较推荐的项目实践
+### 8. 忽略版本兼容
 
-如果是普通 Spring Boot / Spring Cloud 项目，我会这样落：
+下游字段改名、枚举扩展、响应结构变化，都可能让上游反序列化或业务判断出问题。
 
-1. 每个下游服务一个独立 `client` 包。
-2. 每个 Client 单独定义请求 DTO 和响应 DTO。
-3. 统一配置超时、trace header、日志级别。
-4. 用 `ErrorDecoder` 做异常语义转换。
-5. 非关键读请求按需降级，关键写请求不做伪成功 fallback。
-6. 尽量推动下游提供批量接口，避免循环调用。
-7. 对关键链路加监控：成功率、超时率、P95/P99、异常类型。
+## 项目检查清单
 
-这套做法的核心不是“写法优雅”，而是后面服务一多时还能管得住。
+接一个新的 Feign Client 时，至少检查：
+
+- Client 包位置是否清晰？
+- `name`、`url`、`path` 是否用对？
+- DTO 是否和本地 VO / Entity 分开？
+- 是否配置了 connect timeout 和 read timeout？
+- 是否需要透传 trace、tenant、token？
+- HTTP 错误是否转换成业务异常？
+- 是否需要批量接口，避免 N+1 调用？
+- fallback 是不是只用于弱依赖读接口？
+- 写接口是否有幂等 Key？
+- 是否禁止对非幂等接口重试？
+- 日志级别是否合适，敏感字段是否脱敏？
+- 调用链是否过深？
 
 ## 最后记一句话
 
-**OpenFeign 让远程调用“看起来像本地调用”，但架构上永远不能把它当成本地调用。**
+OpenFeign 最大的陷阱是：
 
-只要你一直记住它背后是：
+**它把远程调用写得像本地方法，但远程调用永远有网络、超时、失败、版本兼容和补偿问题。**
 
-- 网络
-- 超时
-- 下游发布
-- 契约变化
-- 失败和补偿
-
-你写出来的 Feign 层通常就不会太失控。
+写 Feign 层时，真正要设计的是调用契约、超时、错误语义、幂等、降级边界和批量能力。

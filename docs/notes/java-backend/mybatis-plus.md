@@ -5,100 +5,133 @@ sidebarTitle: MyBatis-Plus
 
 # MyBatis-Plus 使用笔记
 
-MyBatis-Plus 不是 ORM 魔法，它本质上是 **在 MyBatis 上补了一层通用 CRUD、条件构造器和插件能力**。  
-如果把它当成“数据库层全自动方案”，项目后面通常会写得越来越别扭；如果把它当成“帮你减少样板代码的增强层”，就会顺很多。
+> 这篇只记工程里怎么接、怎么写、哪里容易翻车。
 
-## 先说结论
+## 先给结论
 
-MyBatis-Plus 最适合的用法通常是：
+MyBatis-Plus 适合解决 **单表 CRUD、条件拼接、分页、逻辑删除、自动填充、乐观锁** 这些重复活。
 
-1. 简单单表 CRUD 用它提效。
-2. 常见条件查询用 `LambdaQueryWrapper` / `LambdaUpdateWrapper`。
-3. 分页、乐观锁、逻辑删除这类横切能力交给插件。
-4. 复杂查询、联表、多表聚合、报表 SQL 仍然自己写。
-5. Service 层保留业务逻辑，不要把 Wrapper 拼接当业务实现本身。
+不要把它当成“所有 SQL 都不用写”的工具：
 
-一句话就是：
+- 简单单表：优先用 `BaseMapper`、`LambdaQueryWrapper`。
+- 有业务语义：写在 `Service`，不要把规则塞进 `Controller`。
+- 多表统计、复杂报表、强约束查询：回到 XML / 注解 SQL。
+- 写操作：先确认条件，再执行 `update` / `remove`，不要裸跑。
+- Entity 只对应表，不要直接当请求 DTO 和返回 VO。
 
-**让 MyBatis-Plus 解决重复劳动，不要让它替你设计数据访问层。**
+## 依赖怎么选
 
-## 它到底帮你解决什么
+Spring Boot 3 用这个：
 
-纯 MyBatis 的常见问题是：
-
-- 单表 CRUD 样板代码太多
-- 简单条件查询也要反复写 XML
-- 分页、乐观锁、逻辑删除每个项目都要重新接
-
-MyBatis-Plus 主要补了这些：
-
-- `BaseMapper<T>`
-- `IService<T>` / `ServiceImpl<M, T>`
-- `QueryWrapper` / `LambdaQueryWrapper`
-- `UpdateWrapper` / `LambdaUpdateWrapper`
-- 分页插件
-- 乐观锁插件
-- 逻辑删除
-- 自动填充
-
-所以它真正擅长的是“通用查询和常见治理能力”，不是复杂领域建模。
-
-## 最基本的落地结构
-
-一个典型项目里可以这样分：
-
-```text
-com.example.app
-├─ controller
-├─ service
-├─ service/impl
-├─ mapper
-├─ entity
-├─ dto
-├─ vo
-└─ config
+```xml
+<dependency>
+    <groupId>com.baomidou</groupId>
+    <artifactId>mybatis-plus-spring-boot3-starter</artifactId>
+    <version>${mybatis-plus.version}</version>
+</dependency>
 ```
 
-### `entity`
+Spring Boot 2 用这个：
 
-对应数据库表，放：
+```xml
+<dependency>
+    <groupId>com.baomidou</groupId>
+    <artifactId>mybatis-plus-boot-starter</artifactId>
+    <version>${mybatis-plus.version}</version>
+</dependency>
+```
 
-- 表字段
-- `@TableName`
-- `@TableId`
-- `@TableField`
+分页插件从 `3.5.9+` 开始要额外引入解析器模块：
 
-### `mapper`
+```xml
+<dependency>
+    <groupId>com.baomidou</groupId>
+    <artifactId>mybatis-plus-jsqlparser</artifactId>
+    <version>${mybatis-plus.version}</version>
+</dependency>
+```
 
-继承 `BaseMapper<Entity>`，负责：
+注意：
 
-- 通用 CRUD
-- 自定义 SQL 方法
+- 引了 MyBatis-Plus starter 后，不要再手动引 `mybatis-spring-boot-starter`。
+- JDK 8 老项目如果分页解析器不兼容，查对应版本的 `mybatis-plus-jsqlparser-4.9`。
+- 版本最好统一交给 BOM 或父工程管理，不要每个模块各写一套。
 
-### `service`
+## 最小配置
 
-放业务接口，不要只机械继承后就什么都不写。  
-真正业务动作还是应该在这里命名清楚。
-
-### `service/impl`
-
-可以继承 `ServiceImpl<Mapper, Entity>`，复用通用方法，再补业务逻辑。
-
-## 一个最小例子
-
-### 实体
+启动类或配置类扫 Mapper：
 
 ```java
-@Data
-@TableName("sys_user")
-public class UserEntity {
+@SpringBootApplication
+@MapperScan("com.example.order.mapper")
+public class OrderApplication {
+
+    public static void main(String[] args) {
+        SpringApplication.run(OrderApplication.class, args);
+    }
+}
+```
+
+`application.yml` 里先保留这些：
+
+```yaml
+mybatis-plus:
+  mapper-locations: classpath*:/mapper/**/*.xml
+  type-aliases-package: com.example.order.entity
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+  global-config:
+    db-config:
+      id-type: assign_id
+```
+
+线上注意：
+
+- `log-impl` 会打印 SQL，生产一般不要开标准输出。
+- `id-type` 要和数据库主键策略统一，别一会儿雪花，一会儿自增。
+- 多模块项目要确认 `mapper-locations` 能扫到所有 XML。
+
+## 推荐目录
+
+```text
+com.example.order
+├── controller
+├── service
+│   ├── OrderService.java
+│   └── impl
+│       └── OrderServiceImpl.java
+├── mapper
+│   └── OrderMapper.java
+├── entity
+│   └── OrderEntity.java
+├── dto
+├── vo
+└── config
+    └── MybatisPlusConfig.java
+```
+
+分层原则：
+
+- `entity`：表字段映射。
+- `mapper`：数据库访问。
+- `service`：业务动作和事务边界。
+- `dto`：请求入参。
+- `vo`：接口返回。
+- `config`：插件、填充器、类型处理器。
+
+## Entity 写法
+
+```java
+@TableName("t_order")
+public class OrderEntity {
 
     @TableId(type = IdType.ASSIGN_ID)
     private Long id;
 
-    private String username;
+    private Long userId;
 
-    private String password;
+    private BigDecimal amount;
 
     private Integer status;
 
@@ -107,404 +140,459 @@ public class UserEntity {
 
     @TableField(fill = FieldFill.INSERT_UPDATE)
     private LocalDateTime updateTime;
+
+    @TableLogic
+    private Integer deleted;
+
+    @Version
+    private Integer version;
 }
 ```
 
-### Mapper
+字段约定：
+
+- 数据库字段用 `snake_case`，Java 字段用 `camelCase`。
+- 表名不规范时用 `@TableName`。
+- 主键策略不要靠默认猜，显式写出来。
+- 逻辑删除字段建议统一叫 `deleted`。
+- 乐观锁字段建议统一叫 `version`。
+
+## Mapper 写法
 
 ```java
-public interface UserMapper extends BaseMapper<UserEntity> {
+public interface OrderMapper extends BaseMapper<OrderEntity> {
+
+    /**
+     * 查询用户最近订单。
+     *
+     * <p>复杂排序、关联字段、统计字段放到 XML，避免在 Service 里硬拼 Wrapper。</p>
+     */
+    List<OrderSummaryVO> selectRecentOrders(@Param("userId") Long userId,
+                                            @Param("limit") Integer limit);
+
+    /**
+     * 按订单状态统计数量。
+     *
+     * <p>返回接口 VO，不返回 Entity，避免把表结构泄漏到上层。</p>
+     */
+    List<OrderStatusCountVO> countByStatus(@Param("userId") Long userId);
 }
 ```
 
-### Service
+Mapper 里注释要写“为什么自定义”，不要只翻译方法名：
+
+- 这个查询为什么不用 `BaseMapper`。
+- 返回对象是不是 VO / DTO。
+- 是否依赖特殊索引、排序、分页。
+- 是否要配套 XML 里的 `resultMap`。
+
+## Service 不要只套壳
+
+可以继承 `IService`，但不要让它变成“万能 DAO”：
 
 ```java
-public interface UserService extends IService<UserEntity> {
+public interface OrderService extends IService<OrderEntity> {
 
-    UserEntity getByUsername(String username);
+    Long createOrder(CreateOrderCommand command);
+
+    void cancelOrder(Long orderId, Long userId);
+
+    PageResult<OrderVO> pageUserOrders(OrderPageQuery query);
 }
 ```
 
-### ServiceImpl
+实现里承接业务语义：
 
 ```java
 @Service
-public class UserServiceImpl
-        extends ServiceImpl<UserMapper, UserEntity>
-        implements UserService {
+public class OrderServiceImpl extends ServiceImpl<OrderMapper, OrderEntity>
+        implements OrderService {
 
     @Override
-    public UserEntity getByUsername(String username) {
-        return lambdaQuery()
-                .eq(UserEntity::getUsername, username)
-                .one();
+    @Transactional(rollbackFor = Exception.class)
+    public Long createOrder(CreateOrderCommand command) {
+        OrderEntity order = new OrderEntity();
+        order.setUserId(command.userId());
+        order.setAmount(command.amount());
+        order.setStatus(OrderStatus.CREATED.getCode());
+
+        save(order);
+        return order.getId();
     }
 }
 ```
 
-这个写法的重点不是“少写了多少行”，而是简单查询不再需要额外 XML。
+判断标准：
 
-## 为什么更推荐 `LambdaQueryWrapper`
+- `save(order)` 这种通用操作可以用。
+- `createOrder(command)` 这种业务动作必须自己命名。
+- Controller 不要直接调用 `mapper.insert()`。
+- 跨多张表修改时，事务放在 Service。
 
-MyBatis-Plus 有两套常见写法：
+## Wrapper 查询
 
-### 字符串字段名
-
-```java
-QueryWrapper<UserEntity> wrapper = new QueryWrapper<>();
-wrapper.eq("username", username);
-```
-
-### Lambda 字段引用
+优先用 Lambda，避免字段名字符串写错：
 
 ```java
-LambdaQueryWrapper<UserEntity> wrapper = Wrappers.lambdaQuery();
-wrapper.eq(UserEntity::getUsername, username);
+LambdaQueryWrapper<OrderEntity> wrapper = Wrappers.lambdaQuery(OrderEntity.class)
+    .eq(OrderEntity::getUserId, userId)
+    .eq(OrderEntity::getStatus, OrderStatus.CREATED.getCode())
+    .orderByDesc(OrderEntity::getCreateTime);
+
+List<OrderEntity> orders = orderMapper.selectList(wrapper);
 ```
 
-更推荐第二种，原因很直接：
-
-1. 重构字段名时更安全。
-2. 少写错列名字符串。
-3. 可读性通常更好。
-
-所以日常项目里，优先用：
-
-- `lambdaQuery()`
-- `lambdaUpdate()`
-- `Wrappers.lambdaQuery()`
-- `Wrappers.lambdaUpdate()`
-
-## 常见查询写法
-
-### 按条件查一条
+动态条件这样写：
 
 ```java
-UserEntity user = lambdaQuery()
-        .eq(UserEntity::getUsername, username)
-        .eq(UserEntity::getStatus, 1)
-        .one();
+LambdaQueryWrapper<OrderEntity> wrapper = Wrappers.lambdaQuery(OrderEntity.class)
+    .eq(query.userId() != null, OrderEntity::getUserId, query.userId())
+    .eq(query.status() != null, OrderEntity::getStatus, query.status())
+    .ge(query.startTime() != null, OrderEntity::getCreateTime, query.startTime())
+    .lt(query.endTime() != null, OrderEntity::getCreateTime, query.endTime())
+    .orderByDesc(OrderEntity::getCreateTime);
 ```
 
-### 按条件查列表
+查一条要注意唯一性：
 
 ```java
-List<UserEntity> users = lambdaQuery()
-        .like(UserEntity::getUsername, keyword)
-        .orderByDesc(UserEntity::getCreateTime)
-        .list();
+OrderEntity order = orderMapper.selectOne(
+    Wrappers.lambdaQuery(OrderEntity.class)
+        .eq(OrderEntity::getOrderNo, orderNo)
+        .last("limit 1")
+);
 ```
 
-### 条件动态拼接
+更推荐靠唯一索引保证只会有一条：
 
-```java
-List<UserEntity> users = lambdaQuery()
-        .eq(status != null, UserEntity::getStatus, status)
-        .like(StringUtils.hasText(keyword), UserEntity::getUsername, keyword)
-        .ge(startTime != null, UserEntity::getCreateTime, startTime)
-        .le(endTime != null, UserEntity::getCreateTime, endTime)
-        .list();
+```sql
+alter table t_order add unique uk_order_no(order_no);
 ```
-
-这也是 MyBatis-Plus 很顺手的一点：  
-条件是否生效可以直接写在方法参数里，不用堆很多 `if`。
-
-## 更新写法
-
-### 按主键更新
-
-```java
-UserEntity user = new UserEntity();
-user.setId(id);
-user.setStatus(0);
-updateById(user);
-```
-
-### 按条件更新
-
-```java
-lambdaUpdate()
-        .eq(UserEntity::getId, id)
-        .set(UserEntity::getStatus, 0)
-        .update();
-```
-
-### 批量条件更新
-
-```java
-lambdaUpdate()
-        .in(UserEntity::getId, ids)
-        .set(UserEntity::getStatus, 1)
-        .update();
-```
-
-这里要注意：
-
-**Wrapper 更新很方便，但越方便越要防止误更新全表。**
-
-## 删除写法
-
-### 物理删除
-
-```java
-removeById(id);
-```
-
-### 条件删除
-
-```java
-lambdaUpdate()
-        .eq(UserEntity::getStatus, 0)
-        .remove();
-```
-
-如果项目开启逻辑删除，上面这些删除大多会变成更新删除标记，而不是真删。
 
 ## 分页怎么接
 
-分页是 MyBatis-Plus 非常适合交给插件的一层。
-
-典型配置：
+插件配置：
 
 ```java
-@Bean
-public MybatisPlusInterceptor mybatisPlusInterceptor() {
-    MybatisPlusInterceptor interceptor = new MybatisPlusInterceptor();
-    interceptor.addInnerInterceptor(new PaginationInnerInterceptor(DbType.MYSQL));
-    return interceptor;
+@Configuration
+public class MybatisPlusConfig {
+
+    @Bean
+    public MybatisPlusInterceptor mybatisPlusInterceptor() {
+        MybatisPlusInterceptor interceptor = new MybatisPlusInterceptor();
+        interceptor.addInnerInterceptor(new OptimisticLockerInnerInterceptor());
+        interceptor.addInnerInterceptor(new BlockAttackInnerInterceptor());
+        interceptor.addInnerInterceptor(new PaginationInnerInterceptor(DbType.MYSQL));
+        return interceptor;
+    }
 }
 ```
 
-查询时：
+分页插件尽量放最后，单库项目指定 `DbType`。
+
+调用方式：
 
 ```java
-Page<UserEntity> page = new Page<>(current, size);
+Page<OrderEntity> page = Page.of(query.pageNo(), query.pageSize());
 
-Page<UserEntity> result = lambdaQuery()
-        .eq(UserEntity::getStatus, 1)
-        .page(page);
+Page<OrderEntity> result = orderMapper.selectPage(
+    page,
+    Wrappers.lambdaQuery(OrderEntity.class)
+        .eq(OrderEntity::getUserId, query.userId())
+        .orderByDesc(OrderEntity::getCreateTime)
+);
 ```
 
-然后拿：
-
-- `result.getRecords()`
-- `result.getTotal()`
-- `result.getCurrent()`
-- `result.getSize()`
-
-## 乐观锁怎么接
-
-如果表里有版本号字段，可以配乐观锁插件：
+转成接口分页对象：
 
 ```java
-@Version
-private Integer version;
+List<OrderVO> records = result.getRecords().stream()
+    .map(orderConverter::toVO)
+    .toList();
+
+return PageResult.of(records, result.getTotal(), result.getCurrent(), result.getSize());
 ```
 
-再在插件里加：
+分页坑：
+
+- 前端传 `pageSize` 要限制最大值。
+- 多表分页的 count SQL 可能不准，复杂场景写自定义 count。
+- `left join` 分页 SQL 里表和字段都写别名，减少 count 优化误判。
+- 不要把 `Page` 直接返回给前端，自己封装分页 VO。
+
+## 更新和删除要防手滑
+
+按主键更新：
 
 ```java
-interceptor.addInnerInterceptor(new OptimisticLockerInnerInterceptor());
+OrderEntity update = new OrderEntity();
+update.setId(orderId);
+update.setStatus(OrderStatus.PAID.getCode());
+orderMapper.updateById(update);
 ```
 
-这样更新时会自动带上版本条件。  
-适合：
+按条件更新：
 
-- 库存
-- 状态流转
-- 后台编辑覆盖保护
+```java
+int rows = orderMapper.update(
+    null,
+    Wrappers.lambdaUpdate(OrderEntity.class)
+        .eq(OrderEntity::getId, orderId)
+        .eq(OrderEntity::getStatus, OrderStatus.CREATED.getCode())
+        .set(OrderEntity::getStatus, OrderStatus.CANCELED.getCode())
+);
 
-但要记住，乐观锁不是所有写冲突都能自动解决，它只是帮你发现并发覆盖。
+if (rows != 1) {
+    throw new BizException("订单状态已变化");
+}
+```
 
-## 逻辑删除怎么接
+删除也要带明确条件：
 
-常见配置：
+```java
+orderMapper.delete(
+    Wrappers.lambdaQuery(OrderEntity.class)
+        .eq(OrderEntity::getUserId, userId)
+        .eq(OrderEntity::getId, orderId)
+);
+```
+
+建议开启 `BlockAttackInnerInterceptor`，拦截无条件全表 `update` / `delete`。
+
+## 逻辑删除
+
+全局配置：
+
+```yaml
+mybatis-plus:
+  global-config:
+    db-config:
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+```
+
+字段：
 
 ```java
 @TableLogic
 private Integer deleted;
 ```
 
-或者配全局逻辑删除字段。
+数据库默认值：
 
-优点：
+```sql
+alter table t_order
+    add column deleted tinyint not null default 0 comment '是否删除：0否，1是';
+```
 
-- 查询默认过滤已删数据
-- 删除变更新
+常见坑：
 
-问题也很实际：
+- 逻辑删除不是归档，表还是会变大。
+- 唯一索引要考虑 `deleted`，否则删除后可能无法重新创建同名数据。
+- 后台管理“查已删除数据”一般要写自定义 SQL。
 
-- 唯一索引设计会变复杂
-- 统计、导出、后台排查时要特别注意“是否包含已删数据”
+## 自动填充
 
-所以逻辑删除不是一定比物理删除高级，而是看业务是否真的需要保留删除痕迹。
+字段：
 
-## 自动填充怎么做
+```java
+@TableField(fill = FieldFill.INSERT)
+private LocalDateTime createTime;
 
-常见场景：
+@TableField(fill = FieldFill.INSERT_UPDATE)
+private LocalDateTime updateTime;
+```
 
-- `createTime`
-- `updateTime`
-- `createBy`
-- `updateBy`
-
-可以通过 `MetaObjectHandler` 做自动填充：
+填充器：
 
 ```java
 @Component
-public class CommonMetaObjectHandler implements MetaObjectHandler {
+public class AuditMetaObjectHandler implements MetaObjectHandler {
 
     @Override
     public void insertFill(MetaObject metaObject) {
-        this.strictInsertFill(metaObject, "createTime", LocalDateTime.class, LocalDateTime.now());
-        this.strictInsertFill(metaObject, "updateTime", LocalDateTime.class, LocalDateTime.now());
+        LocalDateTime now = LocalDateTime.now();
+        strictInsertFill(metaObject, "createTime", LocalDateTime.class, now);
+        strictInsertFill(metaObject, "updateTime", LocalDateTime.class, now);
     }
 
     @Override
     public void updateFill(MetaObject metaObject) {
-        this.strictUpdateFill(metaObject, "updateTime", LocalDateTime.class, LocalDateTime.now());
+        strictUpdateFill(metaObject, "updateTime", LocalDateTime.class, LocalDateTime.now());
     }
 }
 ```
 
-这层很适合统一治理，不要在业务代码里每次手动 set。
+如果还要填 `createBy`、`updateBy`，从当前登录上下文里取，不要从请求体传。
 
-## `BaseMapper` 和 `IService` 到底该不该全项目通用
+## 乐观锁
 
-可以用，但别滥用。
+字段：
 
-### 适合直接用通用方法的场景
+```java
+@Version
+private Integer version;
+```
 
-- 按 ID 查
-- 按简单条件查
-- 简单分页
-- 单表增删改
+更新时带旧版本：
 
-### 不适合只靠通用方法硬写的场景
+```java
+OrderEntity order = orderMapper.selectById(orderId);
+order.setStatus(OrderStatus.PAID.getCode());
 
-- 联表查询
-- 聚合统计
-- 复杂排序和分组
-- 业务条件很多的搜索页
-- 需要非常精确 SQL 控制的场景
+int rows = orderMapper.updateById(order);
+if (rows != 1) {
+    throw new BizException("订单已被其他操作修改，请刷新后重试");
+}
+```
 
-这时候更稳的做法通常是：
+适合：
 
-- Mapper 里自定义方法
-- XML 写 SQL
-- 返回专门的 VO / DTO
+- 订单状态流转。
+- 库存扣减前置校验。
+- 配置类数据编辑。
 
-不要为了“全用 MyBatis-Plus”把 SQL 写得特别绕。
+不适合：
 
-## 什么时候该回到 XML / 自定义 SQL
+- 高频计数器。
+- 批量无差别更新。
+- 强一致扣减，通常要配合数据库条件更新或锁。
 
-这块很关键。
+## 自定义 XML
 
-下面这些情况，我一般直接写 SQL，不强行 Wrapper：
+复杂查询回到 XML：
 
-1. 多表联查。
-2. 复杂分组聚合。
-3. 有窗口函数、子查询、公共表达式。
-4. 查询性能很敏感，需要精确控制。
-5. 返回结构明显不是单表实体。
+```java
+public interface OrderMapper extends BaseMapper<OrderEntity> {
 
-经验上：
+    /**
+     * 分页查询订单列表，包含用户昵称和支付状态。
+     */
+    IPage<OrderListVO> selectOrderPage(Page<OrderListVO> page,
+                                       @Param("query") OrderPageQuery query);
+}
+```
 
-- 单表为主，用 MyBatis-Plus 很舒服
-- 一旦跨表复杂度上来，老老实实写 SQL 更稳
+```xml
+<select id="selectOrderPage" resultType="com.example.order.vo.OrderListVO">
+    select
+        o.id,
+        o.order_no,
+        o.amount,
+        o.status,
+        u.nickname as user_nickname
+    from t_order o
+    left join t_user u on u.id = o.user_id
+    where o.deleted = 0
+    <if test="query.userId != null">
+        and o.user_id = #{query.userId}
+    </if>
+    <if test="query.status != null">
+        and o.status = #{query.status}
+    </if>
+    order by o.create_time desc
+</select>
+```
 
-## MyBatis-Plus 最常见的几个坑
+XML 适合放：
 
-### 1. 把 Entity 当所有层通用对象
+- 多表关联。
+- 分组统计。
+- 动态排序白名单。
+- 自定义 `resultMap`。
+- 性能调优后的 SQL。
 
-很多项目会直接：
+## 批量操作
 
-- Controller 收 Entity
-- Service 传 Entity
-- Mapper 也用 Entity
-- 返回前端还是 Entity
+小批量可以用 `saveBatch`：
 
-这样后面很容易出问题：
+```java
+saveBatch(orders, 500);
+```
 
-- 字段越长越混乱
-- 前端返回字段和表结构强耦合
-- 敏感字段容易泄露
+更稳的做法：
 
-更稳的做法是：
+- 每批控制在 300～1000 条，看字段数和数据库压力。
+- 大批量导入用专门导入链路，不要一个 HTTP 请求硬扛。
+- 批量写失败要能定位到哪批、哪条数据。
+- 批量修改涉及业务状态时，不要只靠 `updateBatchById`，要校验状态。
 
-- `Entity` 只面向存储
-- 请求用 `DTO`
-- 返回用 `VO`
+## 常见坑
 
-### 2. Wrapper 拼太多，把业务逻辑写碎
+### Entity 到处传
 
-比如一个方法几十个 `.eq/.like/.or/.and` 连着写，最后：
+不要：
 
-- 不好读
-- 不好测
-- 不好复用
+```java
+@PostMapping("/orders")
+public Long create(@RequestBody OrderEntity order) {
+    return orderService.save(order) ? order.getId() : null;
+}
+```
 
-这时候应该停下来拆：
+要：
 
-- 查询对象
-- 条件构造方法
-- 自定义 SQL
+```java
+@PostMapping("/orders")
+public Long create(@Valid @RequestBody CreateOrderRequest request) {
+    return orderService.createOrder(orderConverter.toCommand(request));
+}
+```
 
-### 3. 误更新、误删除全表
+### Wrapper 写成业务逻辑碎片
 
-这是真坑。
+如果一个查询 Wrapper 超过十几行，并且有很多业务判断，抽成明确方法：
 
-如果 update/remove 条件没拼上，后果很大。  
-所以实践上要注意：
+```java
+private LambdaQueryWrapper<OrderEntity> buildPageWrapper(OrderPageQuery query) {
+    return Wrappers.lambdaQuery(OrderEntity.class)
+        .eq(OrderEntity::getUserId, query.userId())
+        .eq(query.status() != null, OrderEntity::getStatus, query.status())
+        .orderByDesc(OrderEntity::getCreateTime);
+}
+```
 
-- 关键更新前先校验条件
-- 必要时加防全表更新拦截
-- 对后台危险操作单独收口
+### `getOne` 查出多条
 
-### 4. `one()` 查出多条直接报错
+`getOne(wrapper)` 默认遇到多条可能抛异常。能唯一就加唯一索引，不能唯一就分页或 `limit 1`。
 
-`one()` 适合你确定唯一的场景。  
-如果数据可能脏，或者唯一性没被数据库约束住，`one()` 容易炸。
+### 空条件误更新
 
-所以：
+这种代码要禁止：
 
-- 真唯一，用唯一索引 + `one()`
-- 不确定唯一，就 `list()` 或 `limit 1`
+```java
+Wrappers.lambdaUpdate(OrderEntity.class)
+    .set(OrderEntity::getStatus, OrderStatus.CLOSED.getCode());
+```
 
-### 5. 逻辑删除后唯一索引冲突
+必须带业务条件，最好配合 `BlockAttackInnerInterceptor`。
 
-这是很多项目会踩的。
+### 逻辑删除和唯一索引冲突
 
-例如用户名逻辑删除后再新增同名用户，如果唯一索引还只建在 `username` 上，就会冲突。
+如果业务允许删除后重建同名数据，索引要设计成：
 
-所以逻辑删除设计时，要提前想：
+```sql
+create unique index uk_user_name_deleted on t_user(name, deleted);
+```
 
-- 唯一索引是否要带 `deleted`
-- 业务是否允许“删后重建”
+或者用 `deleted_at` 参与唯一索引，按项目数据库能力定。
 
-## 比较推荐的一种项目实践
+## 落地检查清单
 
-如果是普通后台项目，我会这样约束：
+- [ ] starter 和 Spring Boot 版本匹配。
+- [ ] `@MapperScan` 扫描路径正确。
+- [ ] 分页插件可用，`3.5.9+` 已补 `mybatis-plus-jsqlparser`。
+- [ ] `BlockAttackInnerInterceptor` 已配置。
+- [ ] 主键、逻辑删除、乐观锁字段策略统一。
+- [ ] Entity、DTO、VO 没有混用。
+- [ ] 自定义 Mapper 方法有注释，复杂 SQL 放 XML。
+- [ ] 分页返回对象已封装，不直接暴露 `Page`。
+- [ ] 更新 / 删除都带明确业务条件。
+- [ ] 生产环境没有打开控制台 SQL 输出。
 
-1. `Mapper` 统一继承 `BaseMapper`。
-2. 简单查询优先 `lambdaQuery/lambdaUpdate`。
-3. Service 层写清楚业务动作，不直接暴露一堆通用 CRUD 给 Controller。
-4. 联表和复杂报表统一写自定义 SQL。
-5. 打开分页插件。
-6. 按需打开乐观锁、逻辑删除、自动填充。
-7. Entity、DTO、VO 分开。
-8. 对高风险更新删除增加保护。
+## 参考
 
-这套做法通常比较均衡：
-
-- 开发效率高
-- SQL 仍然可控
-- 后面不容易烂
-
-## 最后记一句话
-
-**MyBatis-Plus 最好的定位，是“让简单事更简单”，不是“让复杂事假装简单”。**
-
-用对地方，它很省力。  
-用错地方，你会写出一堆难维护的 Wrapper 魔法。
+- [MyBatis-Plus 安装](https://baomidou.com/en/getting-started/install/)
+- [MyBatis-Plus 分页插件](https://baomidou.com/en/plugins/pagination/)
+- [MyBatis-Plus 插件主体](https://mybatis.plus/guide/interceptor.html)

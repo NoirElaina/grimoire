@@ -5,388 +5,712 @@ sidebarTitle: 01 工程实践
 
 # MySQL 工程实践
 
-MySQL 最容易被学成两种极端：
+> MySQL 不只是会写 SQL，更重要的是把表结构、索引、事务、锁和 Java 代码一起设计。
 
-- 只会写 CRUD，项目一慢就不知道为什么
-- 背了一堆索引和事务概念，但落不到工程实现
+## 先给结论
 
-所以这篇不按数据库教材来讲，而是按 Java 后端项目里真正会遇到的问题来讲：**表怎么设计、索引怎么建、SQL 怎么写、事务怎么控、慢查询怎么排。**
+普通 Java 后端里，MySQL 最稳的做法：
 
-## 先说结论
+- 先看业务读写场景，再建表。
+- 每个索引都要对应真实查询。
+- 联合索引顺序按过滤、排序、区分度设计。
+- 事务边界放在 Service，且尽量小。
+- 不在事务里调用远程 HTTP、MQ、Redis 慢操作。
+- 更新核心数据用条件更新兜住并发。
+- 慢 SQL 先 `EXPLAIN`，不要只会加索引。
+- Redis、MQ、ES 都不能替代 MySQL 的最终一致性。
 
-普通业务系统里，MySQL 最稳的实践通常是：
+## 表设计先写访问路径
 
-1. 表设计先围绕读写场景，而不是只围绕“字段能存下”。
-2. 索引优先服务查询路径，不要靠感觉乱加。
-3. Service 层事务要短，不要把远程调用包进大事务。
-4. 分页、排序、模糊搜索要提前想索引，不要上线后再补。
-5. 遇到慢接口先看 SQL 和执行计划，不要先怀疑 Java 代码。
+建表前先写清楚：
 
-一句话就是：
+```text
+订单表 t_order
 
-**MySQL 在工程里最重要的不是会不会写 SQL，而是能不能把“数据结构、查询路径、事务边界”一起设计好。**
+主要写入：
+- 用户下单创建订单
+- 支付成功更新状态
+- 取消订单更新状态
 
-## 表设计先看读写场景
+主要查询：
+- 按 order_no 查详情
+- 按 user_id 分页查订单列表，按 create_time 倒序
+- 后台按 status、create_time 分页查
+- 定时任务扫描超时未支付订单
 
-很多表一开始就设计歪，是因为只从“字段需要哪些”出发，而不是从“后面怎么查、怎么改”出发。
-
-例如一个订单表，除了字段本身，你最好先问：
-
-- 最常按什么条件查询
-- 最常按什么维度分页
-- 是否会按用户维度查最近订单
-- 是否有状态流转更新
-- 是否会按时间清理历史数据
-
-一个比较常见的订单表可以先长这样：
-
-```sql
-CREATE TABLE `orders` (
-  `id` BIGINT NOT NULL,
-  `order_no` VARCHAR(64) NOT NULL,
-  `user_id` BIGINT NOT NULL,
-  `status` TINYINT NOT NULL,
-  `amount` DECIMAL(12,2) NOT NULL,
-  `create_time` DATETIME NOT NULL,
-  `update_time` DATETIME NOT NULL,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_order_no` (`order_no`),
-  KEY `idx_user_status_ctime` (`user_id`, `status`, `create_time`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+并发点：
+- 支付、取消不能同时成功
+- 同一个 order_no 不能重复
 ```
 
-这里最关键的不是语法，而是：
+然后再建表：
 
-- `id` 负责主键定位
-- `order_no` 负责业务唯一性
-- `(user_id, status, create_time)` 明确服务一类真实查询
+```sql
+create table t_order (
+    id bigint not null primary key,
+    order_no varchar(64) not null,
+    user_id bigint not null,
+    amount decimal(18, 2) not null,
+    status tinyint not null,
+    pay_time datetime null,
+    create_time datetime not null,
+    update_time datetime not null,
+    deleted tinyint not null default 0,
+    version int not null default 0,
+    unique key uk_order_no(order_no),
+    key idx_user_time(user_id, create_time),
+    key idx_status_time(status, create_time)
+) engine = InnoDB default charset = utf8mb4;
+```
+
+表设计不是字段堆砌，而是把未来的查询和并发写提前放进去。
+
+## 字段类型
+
+常用建议：
+
+| 数据 | 类型 | 备注 |
+| --- | --- | --- |
+| 主键 | `bigint` | 雪花 ID、自增 ID 都常见 |
+| 金额 | `decimal(18,2)` | 不用 `double` / `float` |
+| 状态 | `tinyint` / `smallint` | Java 里用枚举映射 |
+| 时间 | `datetime` | 业务时间更直观 |
+| 是否删除 | `tinyint` | `0` 未删，`1` 已删 |
+| 短文本 | `varchar` | 长度按业务限制 |
+| 长文本 | `text` | 不要放进高频列表查询 |
+| JSON | `json` | 适合扩展字段，不适合核心查询条件 |
+
+注意：
+
+- 字段尽量 `not null`，给默认值。
+- 状态字段要有注释和枚举说明。
+- 金额、库存、积分不要用浮点类型。
+- 大字段拆表或延迟查询，别让列表页每次都扫。
 
 ## 主键怎么选
 
-普通项目里最常见的是：
+常见方案：
 
-- 自增主键
-- 雪花 ID / 分布式 ID
+| 方案 | 优点 | 注意 |
+| --- | --- | --- |
+| 自增 ID | 简单、聚簇索引友好 | 分库分表不方便，暴露业务规模 |
+| 雪花 ID | 分布式生成、趋势递增 | 依赖时钟，长度大 |
+| UUID | 全局唯一 | 太长、随机写入不友好 |
+| 业务单号 | 可读性好 | 不建议直接做主键 |
 
-工程上先记住两个重点：
+推荐：
 
-1. 主键最好短、稳定、不可变。
-2. 业务唯一键和主键通常不是一回事。
+- 内部主键用 `bigint`。
+- 对外展示用业务单号：`order_no`。
+- 业务单号加唯一索引。
+- 不要用手机号、邮箱、用户名当主键。
 
-例如订单系统里：
+## 索引先服务 SQL
 
-- 主键：`id`
-- 业务唯一键：`order_no`
+先写 SQL，再设计索引。
 
-不要因为业务编号“更有意义”就直接拿来做主键。
-
-## 索引设计不要脱离查询语句
-
-索引不是越多越好，也不是“感觉这里以后可能会查”就先建上。
-
-一个索引是否值得建，通常先看：
-
-- 真实查询条件
-- 是否排序
-- 是否分页
-- 是否回表可以接受
-
-例如这个查询：
+查询用户订单：
 
 ```sql
-SELECT id, order_no, status, amount, create_time
-FROM orders
-WHERE user_id = ?
-  AND status = ?
-ORDER BY create_time DESC
-LIMIT 20;
+select id, order_no, amount, status, create_time
+from t_order
+where user_id = 10001
+  and deleted = 0
+order by create_time desc
+limit 20;
 ```
 
-它就很适合对应：
+索引：
 
 ```sql
-KEY idx_user_status_ctime (user_id, status, create_time)
+create index idx_user_deleted_time on t_order(user_id, deleted, create_time);
 ```
 
-这就是典型的“索引围绕查询设计”，而不是“字段热门就单独建一个索引”。
-
-## 联合索引最重要的是顺序
-
-很多人知道要建联合索引，但顺序还是靠猜。
-
-先记住一个很实用的原则：
-
-- 等值条件优先
-- 排序字段随后
-- 范围条件通常放后面
-
-例如：
+后台按状态查：
 
 ```sql
-WHERE user_id = ?
-  AND status = ?
-ORDER BY create_time DESC
+select id, order_no, user_id, amount, status, create_time
+from t_order
+where status = 1
+  and create_time >= '2026-06-01 00:00:00'
+  and create_time < '2026-06-02 00:00:00'
+order by create_time desc
+limit 20;
 ```
 
-比起：
+索引：
 
 ```sql
-(create_time, user_id, status)
+create index idx_status_time on t_order(status, create_time);
 ```
 
-更合理的往往是：
+原则：
+
+- 没有查询场景的索引不要建。
+- 写多读少的表，索引更要克制。
+- 唯一约束优先用唯一索引兜住。
+- 低选择性字段单独建索引通常收益不大。
+
+## 联合索引顺序
+
+联合索引不是字段随便排：
 
 ```sql
-(user_id, status, create_time)
+create index idx_user_status_time on t_order(user_id, status, create_time);
 ```
 
-因为查询真正的过滤起点是 `user_id + status`。
-
-## 不要看到慢 SQL 就只会“加索引”
-
-慢查询常见原因至少有这些：
-
-- 没索引
-- 索引顺序不对
-- 查太多列
-- 回表成本高
-- 排序 / 分组走临时表
-- 分页太深
-
-所以慢 SQL 排查顺序通常应该是：
-
-1. 先看原 SQL
-2. 再看 `EXPLAIN`
-3. 再决定要不要改索引、改 SQL、改分页方式
-
-## `EXPLAIN` 最少先看什么
-
-别一上来就想把所有字段背下来，工程里先重点看：
-
-- `type`
-- `key`
-- `rows`
-- `Extra`
-
-例如：
+适合：
 
 ```sql
-EXPLAIN
-SELECT id, order_no, status, amount, create_time
-FROM orders
-WHERE user_id = 1001
-  AND status = 1
-ORDER BY create_time DESC
-LIMIT 20;
+where user_id = ?
+  and status = ?
+order by create_time desc
 ```
 
-你至少想确认：
-
-- 有没有命中期望索引
-- 扫描行数是不是离谱
-- 是否出现 `Using filesort`
-- 是否出现 `Using temporary`
-
-## 分页为什么经常慢
-
-因为很多人写分页默认就是：
+也能用到前缀：
 
 ```sql
-SELECT *
-FROM orders
-ORDER BY create_time DESC
-LIMIT 100000, 20;
+where user_id = ?
 ```
 
-这在页数很深时会很痛苦。  
-数据库要先跳过前面大量记录，再拿后面的 20 条。
-
-### 更稳的做法
-
-如果是时间线类列表，优先考虑基于上次游标翻页：
+但不适合只按 `status` 查：
 
 ```sql
-SELECT id, order_no, create_time
-FROM orders
-WHERE create_time < ?
-ORDER BY create_time DESC
-LIMIT 20;
+where status = ?
 ```
 
-这类写法在大表里通常比深度 `offset` 稳很多。
+因为没有从最左列 `user_id` 开始。
 
-## 模糊查询别默认上 `%keyword%`
+一般顺序：
 
-这也是很常见的性能坑。
+```text
+等值条件 -> 范围条件 / 排序字段
+```
+
+例子：
 
 ```sql
-WHERE username LIKE '%alice%'
+where user_id = ?
+  and status = ?
+  and create_time >= ?
+order by create_time desc
 ```
 
-这类前后都模糊的搜索，普通 B+Tree 索引通常帮不上什么忙。  
-所以一开始就要想清：
+索引：
 
-- 是前缀搜索？
-- 还是全文搜索？
-- 还是要接搜索引擎？
+```sql
+create index idx_user_status_time on t_order(user_id, status, create_time);
+```
 
-不要把“复杂搜索需求”硬塞给普通索引。
+注意：范围条件之后的字段通常很难继续充分利用索引进行过滤。
 
-## 事务边界不要包太大
+## 覆盖索引
 
-Java 项目里最典型的问题不是“不会开事务”，而是事务开太大。
+如果查询字段都在索引里，可能不用回表：
 
-例如：
+```sql
+select id, order_no, status, create_time
+from t_order
+where user_id = ?
+order by create_time desc
+limit 20;
+```
+
+索引：
+
+```sql
+create index idx_user_time_cover
+on t_order(user_id, create_time, id, order_no, status);
+```
+
+不要为了覆盖索引把所有字段都塞进去：
+
+- 索引越大，写入越慢。
+- 占用更多磁盘和内存。
+- 维护成本更高。
+
+只给高频、稳定、收益明确的查询做覆盖索引。
+
+## `EXPLAIN` 看什么
+
+最少看这些列：
+
+| 字段 | 重点 |
+| --- | --- |
+| `type` | 是否 `ALL` 全表扫 |
+| `possible_keys` | 理论可用索引 |
+| `key` | 实际使用索引 |
+| `rows` | 预估扫描行数 |
+| `Extra` | 是否 `Using filesort`、`Using temporary` |
+
+示例：
+
+```sql
+explain
+select id, order_no, amount
+from t_order
+where user_id = 10001
+order by create_time desc
+limit 20;
+```
+
+排查顺序：
+
+1. `key` 是否使用预期索引。
+2. `rows` 是否明显过大。
+3. `Extra` 是否有 `Using filesort`。
+4. where 条件是否写法导致索引失效。
+5. 返回列是否导致大量回表。
+
+不要看到 `Using filesort` 就恐慌，关键看数据量、耗时、是否可接受。
+
+## 常见索引失效写法
+
+函数包裹字段：
+
+```sql
+where date(create_time) = '2026-06-01'
+```
+
+改成范围：
+
+```sql
+where create_time >= '2026-06-01 00:00:00'
+  and create_time < '2026-06-02 00:00:00'
+```
+
+左模糊：
+
+```sql
+where username like '%alice'
+```
+
+类型不一致：
+
+```sql
+where user_id = '10001'
+```
+
+对字段计算：
+
+```sql
+where amount + 10 > 100
+```
+
+低选择性字段单独索引：
+
+```sql
+where deleted = 0
+```
+
+`deleted` 通常要和其他过滤字段组成联合索引，而不是单独建。
+
+## 分页为什么慢
+
+慢分页：
+
+```sql
+select id, order_no, amount, create_time
+from t_order
+where user_id = 10001
+order by id
+limit 100000, 20;
+```
+
+问题：MySQL 需要跳过前 100000 行。
+
+更稳的游标分页：
+
+```sql
+select id, order_no, amount, create_time
+from t_order
+where user_id = 10001
+  and id > 900000
+order by id
+limit 20;
+```
+
+按时间倒序：
+
+```sql
+select id, order_no, amount, create_time
+from t_order
+where user_id = 10001
+  and create_time < '2026-06-01 12:00:00'
+order by create_time desc
+limit 20;
+```
+
+后台必须跳页时：
+
+- 限制最大页数。
+- 用搜索条件缩小范围。
+- 只查 ID 后回表。
+- 做异步导出，不让列表页硬翻十万页。
+
+## 模糊查询
+
+普通索引适合：
+
+```sql
+where username like 'alice%'
+```
+
+不适合：
+
+```sql
+where username like '%alice%'
+```
+
+如果业务需要任意包含搜索：
+
+- 数据量小：可以接受，但要限范围。
+- 数据量中等：考虑专门搜索字段、前缀、倒排表。
+- 数据量大：用 ES / OpenSearch / 专门检索服务。
+
+不要在核心高频接口里直接上 `%keyword%`。
+
+## 事务边界
+
+事务放 Service：
 
 ```java
-@Transactional
-public void createOrder(CreateOrderRequest request) {
-    orderMapper.insert(...);
-    userClient.getById(request.getUserId());
-    stockClient.lock(...);
-    messageProducer.send(...);
+@Service
+public class OrderServiceImpl implements OrderService {
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Long createOrder(CreateOrderCommand command) {
+        Long orderId = orderRepository.create(command);
+        stockRepository.freeze(command.skuId(), command.quantity());
+        return orderId;
+    }
 }
 ```
 
-这种写法风险很高，因为你把：
+事务里不要做：
 
-- 数据库写
-- 远程调用
-- 外部副作用
+- 远程 HTTP 调用。
+- 等待 MQ 结果。
+- 大文件处理。
+- 大量循环写入。
+- 用户交互等待。
 
-全放进了一个事务方法里。
+原因：事务越久，锁持有越久，死锁和连接池耗尽风险越高。
 
-更稳的原则通常是：
+推荐：
 
-- 数据库事务尽量只包本地数据库操作
-- 远程调用不要卡在长事务里
-- 异步消息、状态推进、补偿逻辑拆出来设计
-
-## InnoDB 为什么默认更适合业务系统
-
-普通业务系统里，最关键的通常是：
-
-- 行级锁
-- 事务
-- 崩溃恢复
-
-所以 InnoDB 基本就是默认选项。  
-工程上真正要理解的是：
-
-- 你在享受事务和并发控制时，也要接受它的锁行为和索引路径约束
-
-## 行锁不是“写这一行就一定只锁这一行”
-
-很多并发问题都卡在这里。
-
-InnoDB 的行锁很多时候依赖索引命中路径。  
-如果你的更新没有走好索引，锁范围可能会扩大。
-
-例如：
-
-```sql
-UPDATE orders
-SET status = 2
-WHERE order_no = 'A202605110001';
+```text
+事务内：写数据库、写 outbox、更新必要状态
+事务外：发 MQ、调远程、刷新缓存
 ```
 
-如果 `order_no` 上有唯一索引，这通常会非常干净。  
-如果没有，代价就会大很多。
+## 隔离级别
 
-也就是说，**索引设计不只是为了查询性能，也是在影响锁粒度。**
+常见现象：
 
-## 死锁别只会“重试一下”
+| 问题 | 含义 |
+| --- | --- |
+| 脏读 | 读到别人未提交的数据 |
+| 不可重复读 | 同一事务两次读同一行结果不同 |
+| 幻读 | 同一事务两次范围查询行数不同 |
 
-死锁在高并发更新里并不罕见，但重点不是“见到死锁就 catch 住”，而是先看它为什么发生。
+MySQL InnoDB 常用默认隔离级别是 `REPEATABLE READ`。
 
-常见原因包括：
+工程上更常见的重点不是背概念，而是：
 
-- 两个事务更新资源顺序不一致
-- 范围更新锁住了交叉区间
-- 缺索引导致锁范围扩大
+- 查询是否需要锁。
+- 更新是否带条件。
+- 事务是否过大。
+- 是否靠唯一索引防重复。
+- 是否能接受重试。
 
-例如两个事务：
+## 条件更新兜并发
 
-- 事务 A：先改订单，再改库存
-- 事务 B：先改库存，再改订单
+订单取消：
 
-这种就是典型死锁温床。
+```sql
+update t_order
+set status = 3,
+    update_time = now()
+where id = 10001
+  and status = 1;
+```
 
-更稳的思路通常是：
-
-- 统一更新顺序
-- 尽量缩短事务
-- 用好索引
-
-## Java 代码里事务怎么写更稳
-
-Service 层里，一个比较合理的事务方法通常是这样的：
+Java：
 
 ```java
-@Transactional
-public void payOrder(Long orderId) {
-    OrderEntity order = orderMapper.selectById(orderId);
-    if (order == null) {
-        throw new BizException(40401, "order not found");
-    }
-    if (order.getStatus() != 1) {
-        throw new BizException(40001, "order status invalid");
-    }
-
-    orderMapper.updateStatus(orderId, 2);
-    paymentRecordMapper.insert(...);
+int rows = orderMapper.cancel(orderId, OrderStatus.CREATED, OrderStatus.CANCELED);
+if (rows != 1) {
+    throw new BizException(ErrorCode.ORDER_STATUS_CHANGED);
 }
 ```
 
-重点是：
+库存扣减：
 
-- 事务内是本地数据库动作
-- 状态判断和状态流转尽量紧凑
-- 不把外部网络调用放进事务中间
+```sql
+update sku_stock
+set available_stock = available_stock - #{quantity}
+where sku_id = #{skuId}
+  and available_stock >= #{quantity};
+```
 
-## MyBatis / MyBatis-Plus 层别把 SQL 隐掉太深
+受影响行数为 1 才算成功。
 
-MyBatis-Plus 很方便，但数据库问题一出来，你最后还是得知道 SQL 长什么样。
+条件更新比“先查再改”更能扛并发。
 
-所以比较推荐的是：
+## 行锁不是总能锁一行
 
-- 单表通用操作可以用 MyBatis-Plus
-- 复杂查询、报表、联表老老实实写 SQL
-- 慢查询排查时一定能落回真实 SQL
+InnoDB 行锁建立在索引访问路径上。
 
-别让 ORM 包装层把 SQL 彻底藏起来。
+危险写法：
 
-## 慢查询排查一条比较实用的路径
+```sql
+update t_order
+set status = 3
+where order_no = 'NO10001';
+```
 
-如果你线上接口慢，先按这条路径走：
+如果 `order_no` 没有索引，可能扫描很多行，锁范围也会变大。
 
-1. 先看应用日志里的 SQL 耗时或 traceId
-2. 找到具体慢 SQL
-3. 用 `EXPLAIN` 看执行计划
-4. 判断是索引问题、SQL 写法问题，还是数据量问题
-5. 再决定改 SQL、加索引，还是改分页方式
+更稳：
 
-不要先盲猜：
+```sql
+alter table t_order add unique key uk_order_no(order_no);
+```
 
-- “是不是线程池小了”
-- “是不是 Spring 慢”
+然后再更新：
 
-很多时候就是 SQL 路径不对。
+```sql
+update t_order
+set status = 3
+where order_no = 'NO10001'
+  and status = 1;
+```
 
-## 一种比较推荐的 MySQL 工程实践
+写 SQL 时要确认 where 条件能命中索引。
 
-如果是普通业务系统，我会这样落：
+## 死锁怎么处理
 
-1. 主键和业务唯一键分开设计。
-2. 索引围绕真实查询路径建立。
-3. Service 事务尽量短，只包本地数据库动作。
-4. 分页和排序接口在设计期就考虑索引。
-5. 复杂搜索别强行用普通索引硬扛。
-6. 慢查询先看 SQL 和 `EXPLAIN`，再谈框架层优化。
-7. 并发更新链路提前考虑锁顺序和索引命中。
+死锁不是一句“重试一下”就完了。
 
-## 最后记一句话
+先拿现场：
 
-**MySQL 工程能力的核心，不是会写多少 SQL，而是能不能把“表结构、索引、事务、查询路径、并发行为”一起想清楚。**
+```sql
+show engine innodb status;
+```
 
-只要这五件事能连起来，很多数据库问题都会提前消失。
+看：
+
+- 哪两个事务。
+- 分别持有什么锁。
+- 等待什么锁。
+- 涉及哪条 SQL。
+- 是否访问顺序不一致。
+
+常见原因：
+
+- 多个事务更新表顺序不一致。
+- 批量更新 ID 顺序不一致。
+- 没有索引导致锁范围过大。
+- 事务里夹杂慢操作。
+
+修法：
+
+- 固定更新顺序。
+- 缩小事务。
+- 给条件加合适索引。
+- 批量操作按 ID 排序。
+- 死锁可重试，但要有次数和日志。
+
+重试示例：
+
+```java
+for (int attempt = 1; attempt <= 3; attempt++) {
+    try {
+        return orderService.cancelOrder(command);
+    } catch (DeadlockLoserDataAccessException exception) {
+        if (attempt == 3) {
+            throw exception;
+        }
+        Thread.sleep(50L * attempt);
+    }
+}
+```
+
+## 慢查询排查路径
+
+按这个顺序：
+
+1. 找到慢 SQL 和参数。
+2. 看数据量：表总行数、过滤后行数。
+3. 跑 `EXPLAIN`。
+4. 看是否命中预期索引。
+5. 看是否有排序、临时表、回表。
+6. 检查 where 条件写法。
+7. 检查是否需要改索引或改 SQL。
+8. 检查是否能用缓存、异步、预计算。
+
+常用 SQL：
+
+```sql
+show full processlist;
+
+explain select ...
+
+show index from t_order;
+```
+
+慢查询优化不要只盯 SQL：
+
+- 接口是否需要这么多字段。
+- 是否应该分页。
+- 是否可以拆成两次查询。
+- 是否可以异步导出。
+- 是否应该换成搜索引擎。
+
+## MyBatis / MyBatis-Plus 里的 SQL
+
+简单单表可以用 Wrapper：
+
+```java
+LambdaQueryWrapper<OrderEntity> wrapper = Wrappers.lambdaQuery(OrderEntity.class)
+    .eq(OrderEntity::getUserId, userId)
+    .eq(OrderEntity::getDeleted, 0)
+    .orderByDesc(OrderEntity::getCreateTime);
+```
+
+复杂 SQL 放 XML：
+
+```xml
+<select id="selectOrderPage" resultType="com.example.order.vo.OrderListVO">
+    select
+        o.id,
+        o.order_no,
+        o.amount,
+        o.status,
+        u.nickname as user_nickname
+    from t_order o
+    left join t_user u on u.id = o.user_id
+    where o.deleted = 0
+    <if test="query.status != null">
+        and o.status = #{query.status}
+    </if>
+    order by o.create_time desc
+</select>
+```
+
+Mapper 方法加注释：
+
+```java
+public interface OrderMapper {
+
+    /**
+     * 分页查询后台订单列表。
+     *
+     * <p>用于管理端组合筛选，SQL 依赖 idx_status_time 索引；列表只返回轻量字段。</p>
+     */
+    IPage<OrderListVO> selectOrderPage(Page<OrderListVO> page,
+                                       @Param("query") OrderPageQuery query);
+}
+```
+
+不要把复杂 SQL 藏在二十行 Wrapper 里，后面排查会很痛苦。
+
+## 连接池
+
+HikariCP 常见配置：
+
+```yaml
+spring:
+  datasource:
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+      connection-timeout: 3000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+```
+
+排查连接池问题看：
+
+- 活跃连接数。
+- 等待连接数。
+- 获取连接耗时。
+- 慢 SQL。
+- 事务是否长时间不提交。
+- 是否连接泄漏。
+
+不要盲目把连接池调很大。数据库承受不住时，只会把问题放大。
+
+## Redis 与 MySQL 一致性
+
+常见做法：
+
+```text
+读：先 Redis，未命中查 MySQL，回填 Redis
+写：先写 MySQL，提交后删 Redis
+```
+
+不要：
+
+```text
+先删 Redis -> 再写 MySQL -> 事务失败
+```
+
+更稳：
+
+```java
+@Transactional(rollbackFor = Exception.class)
+public void updateProduct(UpdateProductCommand command) {
+    productMapper.updateById(command.toEntity());
+
+    TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+        @Override
+        public void afterCommit() {
+            redisTemplate.delete(ProductCacheKey.detail(command.productId()));
+        }
+    });
+}
+```
+
+强一致要求更高：
+
+- 写 MySQL。
+- 事务内写 outbox。
+- 异步消费 outbox 删除缓存。
+- 删除失败重试。
+- 定时对账补偿。
+
+## 建表检查清单
+
+- [ ] 表有明确读写场景。
+- [ ] 主键类型统一。
+- [ ] 有唯一约束兜住业务唯一性。
+- [ ] 金额不用浮点类型。
+- [ ] 状态字段有枚举说明。
+- [ ] 高频查询字段有对应索引。
+- [ ] 联合索引顺序匹配 SQL。
+- [ ] 大字段不进入高频列表查询。
+- [ ] `create_time`、`update_time`、`deleted` 规则统一。
+- [ ] 逻辑删除和唯一索引冲突已处理。
+
+## SQL 检查清单
+
+- [ ] 查询字段没有 `select *`。
+- [ ] where 条件能命中索引。
+- [ ] 没有函数包裹索引字段。
+- [ ] 没有不必要的左模糊。
+- [ ] 分页限制了最大页数或用了游标。
+- [ ] 排序字段有索引或可接受。
+- [ ] 慢 SQL 跑过 `EXPLAIN`。
+- [ ] 更新 / 删除带明确条件。
+- [ ] 批量操作有大小限制。
+- [ ] 事务里没有远程调用。
+
+## 参考
+
+- [MySQL Optimizing Queries with EXPLAIN](https://dev.mysql.com/doc/refman/8.4/en/using-explain.html)
+- [MySQL Multiple-Column Indexes](https://dev.mysql.com/doc/refman/8.4/en/multiple-column-indexes.html)
+- [MySQL InnoDB Locking](https://dev.mysql.com/doc/refman/8.4/en/innodb-locking.html)
+- [MySQL InnoDB Deadlocks](https://dev.mysql.com/doc/refman/8.4/en/innodb-deadlocks.html)
