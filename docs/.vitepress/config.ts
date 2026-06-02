@@ -210,6 +210,11 @@ export default defineConfig({
               '接口设计模板'
             ),
             createDocItem(
+              'notes/java-backend/filter-interceptor.md',
+              '/notes/java-backend/filter-interceptor',
+              '过滤器与拦截器'
+            ),
+            createDocItem(
               'notes/java-backend/troubleshooting-template.md',
               '/notes/java-backend/troubleshooting-template',
               '问题排查模板'
@@ -299,6 +304,11 @@ export default defineConfig({
               'notes/redis/cache-design.md',
               '/notes/redis/cache-design',
               '01 缓存设计'
+            ),
+            createDocItem(
+              'notes/redis/redis-template-json.md',
+              '/notes/redis/redis-template-json',
+              '02 RedisTemplate 配置'
             )
           ]
         }
@@ -318,6 +328,11 @@ export default defineConfig({
               'notes/rabbitmq/message-model.md',
               '/notes/rabbitmq/message-model',
               '01 消息模型'
+            ),
+            createDocItem(
+              'notes/rabbitmq/install-spring.md',
+              '/notes/rabbitmq/install-spring',
+              '02 安装与 Spring 集成'
             )
           ]
         }

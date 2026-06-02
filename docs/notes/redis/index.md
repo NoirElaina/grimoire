@@ -10,6 +10,7 @@ sidebarTitle: 专题首页
 ## 内容入口
 
 - [Redis 基础使用与缓存设计](/notes/redis/cache-design)
+- [RedisTemplate JSON 序列化配置](/notes/redis/redis-template-json)
 
 ## 先定边界
 

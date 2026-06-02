@@ -15,6 +15,7 @@ sidebarTitle: 专题首页
 
 - [Spring Boot 项目骨架](/notes/java-backend/spring-boot-template)
 - [接口设计](/notes/java-backend/api-design-template)
+- [过滤器与拦截器](/notes/java-backend/filter-interceptor)
 - [问题排查](/notes/java-backend/troubleshooting-template)
 - [JWT 鉴权设计笔记](/notes/java-backend/jwt-auth)
 

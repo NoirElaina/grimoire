@@ -20,10 +20,10 @@ RabbitMQ 相关内容一旦开始写深，通常很快就会分出几条线：
 ## 起步笔记
 
 - [RabbitMQ 消息模型与核心概念](/notes/rabbitmq/message-model)
+- [RabbitMQ 安装配置与 Spring Boot 集成](/notes/rabbitmq/install-spring)
 
 ## 后面可以继续补
 
-- Spring Boot 整合 RabbitMQ
 - 生产者确认与投递可靠性
 - 消费者确认、重试与死信
 - 延迟消息设计
