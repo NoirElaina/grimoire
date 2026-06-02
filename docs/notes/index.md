@@ -9,51 +9,51 @@ pageClass: notes-hub
 <div class="notes-topic-grid">
   <section class="notes-topic-card">
     <div class="notes-topic-head">
-      <h2><a href="/notes/agents/">Agents</a></h2>
+      <h2><a href="agents/">Agents</a></h2>
       <p>多 Agent、Prompt、工具调用、上下文编排。</p>
     </div>
     <div class="notes-topic-actions">
-      <a href="/notes/agents/">进入专题</a>
+      <a href="agents/">进入专题</a>
     </div>
   </section>
 
   <section class="notes-topic-card">
     <div class="notes-topic-head">
-      <h2><a href="/notes/java-backend/">Java 后端</a></h2>
+      <h2><a href="java-backend/">Java 后端</a></h2>
       <p>Spring Boot、接口设计、服务拆分、问题排查。</p>
     </div>
     <div class="notes-topic-actions">
-      <a href="/notes/java-backend/">进入专题</a>
+      <a href="java-backend/">进入专题</a>
     </div>
   </section>
 
   <section class="notes-topic-card">
     <div class="notes-topic-head">
-      <h2><a href="/notes/rabbitmq/">RabbitMQ</a></h2>
+      <h2><a href="rabbitmq/">RabbitMQ</a></h2>
       <p>消息模型、路由设计、可靠性、消费端治理。</p>
     </div>
     <div class="notes-topic-actions">
-      <a href="/notes/rabbitmq/">进入专题</a>
+      <a href="rabbitmq/">进入专题</a>
     </div>
   </section>
 
   <section class="notes-topic-card">
     <div class="notes-topic-head">
-      <h2><a href="/notes/redis/">Redis</a></h2>
+      <h2><a href="redis/">Redis</a></h2>
       <p>缓存设计、数据结构、分布式状态与一致性边界。</p>
     </div>
     <div class="notes-topic-actions">
-      <a href="/notes/redis/">进入专题</a>
+      <a href="redis/">进入专题</a>
     </div>
   </section>
 
   <section class="notes-topic-card">
     <div class="notes-topic-head">
-      <h2><a href="/notes/mysql/">MySQL</a></h2>
+      <h2><a href="mysql/">MySQL</a></h2>
       <p>表设计、索引、事务、锁与慢查询排查。</p>
     </div>
     <div class="notes-topic-actions">
-      <a href="/notes/mysql/">进入专题</a>
+      <a href="mysql/">进入专题</a>
     </div>
   </section>
 </div>
@@ -61,6 +61,6 @@ pageClass: notes-hub
 ## 通用页
 
 <div class="notes-utility-links">
-  <a href="/markdown-examples">写作与发布</a>
-  <a href="/api-examples">技术摘记</a>
+  <a href="../markdown-examples.html">写作与发布</a>
+  <a href="../api-examples.html">技术摘记</a>
 </div>
