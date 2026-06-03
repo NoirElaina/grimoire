@@ -5,31 +5,36 @@ sidebarTitle: 02 安装与 Spring 集成
 
 # RabbitMQ 安装配置与 Spring Boot 集成
 
-> 这篇只记工程落地：本地怎么装、端口怎么配、用户和 vhost 怎么建、Spring Boot 怎么发消息和消费消息。
+> 这一篇按工程落地流程写：先把 RabbitMQ 跑起来，再让 Spring Boot 能声明拓扑、发送消息、消费消息、处理失败。
 
 ## 先给结论
 
-普通 Java 后端项目里，RabbitMQ 起步按这个顺序做：
+最小可用流程：
 
-1. 本地用 Docker Compose 启动 RabbitMQ 管理版镜像。
-2. 新建业务专用 `vhost`、用户、权限，不要用生产 `guest`。
-3. Spring Boot 引入 `spring-boot-starter-amqp`。
-4. 用配置文件管理连接、确认、返回、消费并发、手动确认。
-5. 用 Bean 声明 `Exchange`、`Queue`、`Binding`。
-6. 生产者用 `RabbitTemplate`，发送时带 `messageId`。
-7. 消费者用 `@RabbitListener`，业务成功后 `ack`，失败按规则进入重试或死信。
-
-别一开始就只写：
-
-```java
-rabbitTemplate.convertAndSend("queue", message);
+```text
+1. Docker Compose 启动 RabbitMQ management 镜像
+2. 创建 vhost、用户、权限
+3. Spring Boot 配连接信息
+4. 声明 exchange、queue、binding、DLQ
+5. 配 JSON 消息转换器
+6. RabbitTemplate 发送消息，带 messageId
+7. @RabbitListener 消费消息，手动 ack
+8. 失败消息 nack(false)，进入 DLQ
+9. 消费端用数据库唯一约束做幂等
 ```
 
-先把交换机、路由键、队列、确认、死信都设计清楚。
+不要只做到“能发能收”。RabbitMQ 工程化至少要补：
 
-## 本地 Docker Compose 安装
+- 生产者确认。
+- 路由失败返回。
+- 消费者手动确认。
+- 死信队列。
+- 消费幂等。
+- 基础监控。
 
-新建 `docker-compose.yml`：
+## 本地安装
+
+用 Docker Compose：
 
 ```yaml
 services:
@@ -58,54 +63,37 @@ volumes:
 docker compose up -d
 ```
 
-查看日志：
+查看：
 
 ```bash
+docker compose ps
 docker compose logs -f rabbitmq
 ```
 
-访问管理页面：
+管理台：
 
 ```text
 http://localhost:15672
 ```
 
-登录：
+账号：
 
 ```text
-username: flashmart
-password: flashmart123
+flashmart / flashmart123
 ```
 
-端口记住两个：
+端口别记错：
 
 | 端口 | 用途 |
 | --- | --- |
-| `5672` | AMQP 客户端连接端口，Spring Boot 连接这里 |
-| `15672` | Management UI / HTTP API |
+| `5672` | AMQP，Spring Boot 连这个 |
+| `15672` | 管理台，不是业务连接端口 |
 
-官方也提供一行 Docker 命令：
+## vhost、用户、权限
 
-```bash
-docker run -it --rm --name rabbitmq \
-  -p 5672:5672 \
-  -p 15672:15672 \
-  rabbitmq:4-management
-```
+`vhost` 是 RabbitMQ 的逻辑隔离空间。开发、测试、生产建议拆开。
 
-但项目里更推荐 Compose，配置更清楚，也方便保留数据卷。
-
-## 用户、vhost、权限
-
-RabbitMQ 里的 `vhost` 可以理解成“逻辑隔离空间”。不同项目、不同环境最好拆开：
-
-```text
-flashmart-dev
-flashmart-test
-flashmart-prod
-```
-
-如果不是通过环境变量创建，也可以进容器手动建：
+如果没有用环境变量创建，可以手动执行：
 
 ```bash
 docker exec -it flashmart-rabbitmq rabbitmqctl add_vhost flashmart
@@ -123,14 +111,25 @@ docker exec -it flashmart-rabbitmq rabbitmqctl list_permissions -p flashmart
 
 注意：
 
-- 生产不要用默认 `guest/guest`。
-- 官方默认 `guest` 用户只适合本机访问，远程连接会受限制。
-- 生产用户名和密码走环境变量、配置中心或密钥系统。
-- vhost 权限要按应用隔离，不要所有应用都连 `/`。
+- 生产不要用 `guest/guest`。
+- 生产不要所有应用共用 `/` vhost。
+- 密码不要提交到 Git。
+- 管理台不要暴露公网。
 
-## 基础配置文件
+## Spring Boot 依赖
 
-Spring Boot 配置：
+```xml
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-amqp</artifactId>
+</dependency>
+```
+
+Web 项目通常已经有 Jackson；如果是纯 AMQP 项目，按需补 JSON 依赖。
+
+## 连接配置
+
+`application.yml`：
 
 ```yaml
 spring:
@@ -154,40 +153,27 @@ spring:
           enabled: false
 ```
 
-这些配置的意思：
+关键配置：
 
 | 配置 | 作用 |
 | --- | --- |
-| `publisher-confirm-type: correlated` | 开启生产者确认，知道消息有没有到达 exchange |
-| `publisher-returns: true` | 开启路由失败返回 |
-| `template.mandatory: true` | 消息路由不到队列时触发 returns |
-| `acknowledge-mode: manual` | 消费端手动确认 |
+| `publisher-confirm-type: correlated` | Broker 收到 exchange 后回调确认 |
+| `publisher-returns: true` | 路由不到队列时返回消息 |
+| `template.mandatory: true` | 开启不可路由消息返回 |
+| `acknowledge-mode: manual` | 消费端手动 ack/nack |
 | `prefetch: 10` | 单个消费者最多预取 10 条未确认消息 |
-| `concurrency` | 初始消费者线程数 |
-| `max-concurrency` | 最大消费者线程数 |
-| `retry.enabled: false` | 先别让框架自动无限重试，业务自己设计重试和死信 |
+| `retry.enabled: false` | 不让框架自动重试，先用 DLQ 兜失败 |
 
-生产环境注意：
+为什么先关自动重试：
 
-- `host` 最好用内网地址或服务发现名。
-- 管理端口 `15672` 不要暴露公网。
-- 密码不要写进 Git。
-- 不同环境使用不同 vhost。
+- 自动重试容易和手动 ack 混在一起。
+- 新手很难判断消息到底重试了几次。
+- 先让失败消息进入 DLQ，更容易排查。
+- 后面要做重试队列时，再单独设计。
 
-## Maven 依赖
+## 命名常量
 
-```xml
-<dependency>
-    <groupId>org.springframework.boot</groupId>
-    <artifactId>spring-boot-starter-amqp</artifactId>
-</dependency>
-```
-
-如果消息体用 JSON，通常还需要 Jackson。Web 项目一般已经有；非 Web 项目按需引入 JSON 依赖。
-
-## 命名约定
-
-先统一名字，不然后面排查会非常乱：
+先把 exchange、queue、routing key 收口：
 
 ```java
 public final class RabbitNames {
@@ -199,25 +185,32 @@ public final class RabbitNames {
     public static final String ORDER_CREATED_DLQ = "flashmart.order.created.dlq";
 
     public static final String ORDER_CREATED_ROUTING_KEY = "order.created";
-    public static final String ORDER_CREATED_DLQ_ROUTING_KEY = "order.created.dlq";
+    public static final String ORDER_CREATED_FAILED_ROUTING_KEY = "order.created.failed";
 
     private RabbitNames() {
     }
 }
 ```
 
-建议：
+不要在业务代码里到处写字符串。
 
-- exchange：`系统.模块.类型.exchange`。
-- queue：`系统.模块.事件.queue`。
-- dead queue：`系统.模块.事件.dlq`。
-- routing key：`业务.事件`。
+## 声明拓扑
 
-## 声明交换机、队列、绑定
+这一段负责把 RabbitMQ 里的结构声明出来：
+
+```text
+order.event.exchange
+  -- order.created -->
+flashmart.order.created.queue
+  -- failed -->
+flashmart.order.created.dlq
+```
+
+Spring 配置：
 
 ```java
 @Configuration
-public class RabbitMqTopologyConfig {
+public class RabbitTopologyConfig {
 
     @Bean
     public DirectExchange orderEventExchange() {
@@ -240,7 +233,7 @@ public class RabbitMqTopologyConfig {
         return QueueBuilder
             .durable(RabbitNames.ORDER_CREATED_QUEUE)
             .deadLetterExchange(RabbitNames.ORDER_DLX_EXCHANGE)
-            .deadLetterRoutingKey(RabbitNames.ORDER_CREATED_DLQ_ROUTING_KEY)
+            .deadLetterRoutingKey(RabbitNames.ORDER_CREATED_FAILED_ROUTING_KEY)
             .build();
     }
 
@@ -266,28 +259,41 @@ public class RabbitMqTopologyConfig {
         return BindingBuilder
             .bind(orderCreatedDlq)
             .to(orderDlxExchange)
-            .with(RabbitNames.ORDER_CREATED_DLQ_ROUTING_KEY);
+            .with(RabbitNames.ORDER_CREATED_FAILED_ROUTING_KEY);
     }
 }
 ```
 
+常用 import：
+
+```java
+import org.springframework.amqp.core.Binding;
+import org.springframework.amqp.core.BindingBuilder;
+import org.springframework.amqp.core.DirectExchange;
+import org.springframework.amqp.core.ExchangeBuilder;
+import org.springframework.amqp.core.Queue;
+import org.springframework.amqp.core.QueueBuilder;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+```
+
 注意：
 
-- exchange、queue 都建议 durable。
-- 消费失败不要默认一直 requeue，容易死循环。
-- 死信队列一开始就建，别等线上失败后才补。
-- 这些 Bean 会由 Spring AMQP 管理并声明到 RabbitMQ。
+- 业务队列和死信队列都要 durable。
+- 主队列配置 DLX，失败才有地方去。
+- 不建议在管理台手工建一套，代码里又建一套。
+- 队列参数一旦变更，已有队列可能需要删除重建，开发环境尤其常见。
 
 ## JSON 消息转换器
 
-Spring Boot 4 / Spring AMQP 4 用 `JacksonJsonMessageConverter`：
+Spring Boot 4 / Spring AMQP 4：
 
 ```java
 @Configuration
-public class RabbitMqMessageConfig {
+public class RabbitMessageConfig {
 
     @Bean
-    public MessageConverter jacksonMessageConverter(JsonMapper jsonMapper) {
+    public MessageConverter messageConverter(JsonMapper jsonMapper) {
         return new JacksonJsonMessageConverter(jsonMapper, "org.example.flashmart");
     }
 }
@@ -298,14 +304,16 @@ public class RabbitMqMessageConfig {
 ```java
 import org.springframework.amqp.support.converter.JacksonJsonMessageConverter;
 import org.springframework.amqp.support.converter.MessageConverter;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 import tools.jackson.databind.json.JsonMapper;
 ```
 
-Spring Boot 3 / Spring AMQP 3 常见写法：
+Spring Boot 3 / Spring AMQP 3：
 
 ```java
 @Bean
-public MessageConverter jacksonMessageConverter(ObjectMapper objectMapper) {
+public MessageConverter messageConverter(ObjectMapper objectMapper) {
     return new Jackson2JsonMessageConverter(objectMapper);
 }
 ```
@@ -320,20 +328,20 @@ import org.springframework.amqp.support.converter.MessageConverter;
 
 注意：
 
-- Boot 4 是 Jackson 3，类名没有 `2`。
-- Boot 3 是 Jackson 2，常见类名带 `2`。
-- 生产者和消费者的消息转换器要一致。
-- 不同服务之间传消息，更推荐用稳定 DTO，不要直接传 Entity。
+- Boot 4 对应 Jackson 3，常见类名没有 `2`。
+- Boot 3 对应 Jackson 2，常见类名带 `2`。
+- 生产者和消费者要使用一致的消息转换器。
+- 消息 DTO 不要直接用 Entity。
 
 ## Listener 容器配置
 
-如果只靠 `application.yml` 够用，可以不写工厂。
+如果 `application.yml` 足够，可以不写这个配置。
 
-如果要明确 JSON 转换器、手动确认、并发参数，可以写：
+需要明确 message converter、手动 ack、prefetch、并发时可以写：
 
 ```java
 @Configuration
-public class RabbitMqListenerConfig {
+public class RabbitListenerConfig {
 
     @Bean
     public SimpleRabbitListenerContainerFactory rabbitListenerContainerFactory(
@@ -360,18 +368,20 @@ import org.springframework.amqp.rabbit.config.SimpleRabbitListenerContainerFacto
 import org.springframework.amqp.rabbit.connection.ConnectionFactory;
 import org.springframework.amqp.support.converter.MessageConverter;
 import org.springframework.boot.autoconfigure.amqp.SimpleRabbitListenerContainerFactoryConfigurer;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 ```
 
-消费者并发不是越大越好：
+并发不要乱调：
 
-- DB 压力扛不住时，并发越高越容易雪崩。
-- 外部接口慢时，并发越高越容易堆线程。
-- 顺序消息不能随便开高并发。
-- `prefetch` 太大时，单个消费者会囤很多未确认消息。
+- 消费慢但 DB 扛得住：可以加并发。
+- DB 已经慢：加并发只会更糟。
+- 需要顺序：不要多消费者并发抢。
+- 外部接口慢：先加超时、限流、熔断。
 
-## 生产者发送消息
+## 发送消息
 
-事件 DTO：
+事件对象：
 
 ```java
 public record OrderCreatedEvent(
@@ -383,7 +393,7 @@ public record OrderCreatedEvent(
 }
 ```
 
-发送：
+生产者：
 
 ```java
 @Service
@@ -416,31 +426,29 @@ public class OrderEventPublisher {
 }
 ```
 
-注意：
+常用 import：
 
-- `messageId` 用于日志、幂等、排查。
-- routing key 不要硬编码散落在业务代码里。
-- DTO 字段要稳定，不要直接发数据库 Entity。
-- 发送消息最好和本地事务配合 outbox，不要事务没提交就让消费者处理。
-
-## 生产者确认和返回
-
-配置了：
-
-```yaml
-spring:
-  rabbitmq:
-    publisher-confirm-type: correlated
-    publisher-returns: true
-    template:
-      mandatory: true
+```java
+import org.springframework.amqp.core.MessageProperties;
+import org.springframework.amqp.rabbit.connection.CorrelationData;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.stereotype.Service;
 ```
 
-再配置回调：
+注意：
+
+- `messageId` 用来排查、幂等、日志关联。
+- `CorrelationData` 用来做 publisher confirm。
+- routing key 不要散落硬编码。
+- 消息 DTO 字段要稳定。
+
+## 生产者确认和路由失败
+
+配置：
 
 ```java
 @Configuration
-public class RabbitMqTemplateConfig {
+public class RabbitTemplateConfig {
 
     @Bean
     public RabbitTemplate rabbitTemplate(ConnectionFactory connectionFactory,
@@ -452,14 +460,14 @@ public class RabbitMqTemplateConfig {
         template.setConfirmCallback((correlationData, ack, cause) -> {
             String messageId = correlationData == null ? null : correlationData.getId();
             if (ack) {
-                log.info("rabbit message confirmed, messageId={}", messageId);
+                log.info("rabbit confirm success, messageId={}", messageId);
                 return;
             }
-            log.warn("rabbit message confirm failed, messageId={}, cause={}", messageId, cause);
+            log.warn("rabbit confirm failed, messageId={}, cause={}", messageId, cause);
         });
 
         template.setReturnsCallback(returned -> log.warn(
-            "rabbit message returned, exchange={}, routingKey={}, replyCode={}, replyText={}",
+            "rabbit returned, exchange={}, routingKey={}, replyCode={}, replyText={}",
             returned.getExchange(),
             returned.getRoutingKey(),
             returned.getReplyCode(),
@@ -475,12 +483,58 @@ public class RabbitMqTemplateConfig {
 
 | 回调 | 说明 |
 | --- | --- |
-| confirm | 消息有没有到达 exchange |
+| confirm | Broker 是否收到并处理到 exchange |
 | returns | 消息到了 exchange，但没有路由到 queue |
 
-重要：confirm 成功不代表消费者已经处理成功，只代表 broker 接收到了。
+重要：
 
-## 消费者接收消息
+- confirm 成功不代表消费者处理成功。
+- returns 触发通常说明 exchange、routing key、binding 配错。
+- 真正可靠投递还要配合 outbox 或补偿任务。
+
+## 事务后发送消息
+
+不要在数据库事务没提交时就让消费者看见消息。
+
+更稳的做法：
+
+```java
+@Transactional(rollbackFor = Exception.class)
+public Long createOrder(CreateOrderCommand command) {
+    Long orderId = orderRepository.create(command);
+
+    TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+        @Override
+        public void afterCommit() {
+            orderEventPublisher.publishOrderCreated(new OrderCreatedEvent(
+                orderId,
+                command.userId(),
+                command.amount(),
+                LocalDateTime.now()
+            ));
+        }
+    });
+
+    return orderId;
+}
+```
+
+更可靠的生产方案是 outbox：
+
+```text
+1. 业务事务内写订单
+2. 同一个事务内写 outbox_event 表
+3. 定时任务 / CDC 扫描 outbox_event
+4. 发送 RabbitMQ
+5. confirm 成功后标记已发送
+6. 失败继续重试
+```
+
+这块后面可以单独成一篇可靠投递笔记。
+
+## 消费消息
+
+消费者：
 
 ```java
 @Component
@@ -494,13 +548,7 @@ public class OrderCreatedListener {
         String messageId = message.getMessageProperties().getMessageId();
 
         try {
-            log.info("consume order created, messageId={}, orderId={}",
-                messageId,
-                event.orderId()
-            );
-
-            handleBusiness(event, messageId);
-
+            orderCreatedConsumerService.handle(event, messageId);
             channel.basicAck(deliveryTag, false);
         } catch (DuplicateMessageException exception) {
             log.info("duplicate message ignored, messageId={}", messageId);
@@ -509,10 +557,6 @@ public class OrderCreatedListener {
             log.error("consume order created failed, messageId={}", messageId, exception);
             channel.basicNack(deliveryTag, false, false);
         }
-    }
-
-    private void handleBusiness(OrderCreatedEvent event, String messageId) {
-        // 业务处理：发优惠券、创建物流任务、发送通知等
     }
 }
 ```
@@ -523,23 +567,30 @@ public class OrderCreatedListener {
 import com.rabbitmq.client.Channel;
 import org.springframework.amqp.core.Message;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
+import org.springframework.stereotype.Component;
 ```
 
-`basicNack(deliveryTag, false, false)` 的最后一个 `false` 表示不重新入队；如果队列配置了死信，就会进入 DLQ。
+这里的处理策略：
 
-不要随便写 `true`：
+| 情况 | 动作 |
+| --- | --- |
+| 业务成功 | `basicAck` |
+| 重复消息 | `basicAck` |
+| 业务失败 | `basicNack(requeue=false)`，进 DLQ |
+
+不要默认：
 
 ```java
 channel.basicNack(deliveryTag, false, true);
 ```
 
-这会让失败消息重新回队列，处理逻辑没修好时容易无限循环。
+如果错误一直存在，它会无限重新入队。
 
 ## 消费幂等
 
-RabbitMQ 消息可能重复投递。消费端必须幂等。
+RabbitMQ 可能重复投递，消费端必须幂等。
 
-常见做法：
+一种做法是消费日志表：
 
 ```sql
 create table mq_consume_log (
@@ -553,63 +604,74 @@ create table mq_consume_log (
 );
 ```
 
-消费时：
+业务处理：
 
 ```java
-@Transactional(rollbackFor = Exception.class)
-public void handleBusiness(OrderCreatedEvent event, String messageId) {
-    boolean firstConsume = consumeLogRepository.tryStart(messageId, "orderCreatedListener");
-    if (!firstConsume) {
-        throw new DuplicateMessageException(messageId);
-    }
+@Service
+public class OrderCreatedConsumerService {
 
-    couponService.issueNewUserCoupon(event.userId());
-    consumeLogRepository.markSuccess(messageId, "orderCreatedListener");
+    @Transactional(rollbackFor = Exception.class)
+    public void handle(OrderCreatedEvent event, String messageId) {
+        boolean firstConsume = consumeLogRepository.tryStart(
+            messageId,
+            "orderCreatedListener"
+        );
+        if (!firstConsume) {
+            throw new DuplicateMessageException(messageId);
+        }
+
+        couponService.issueCoupon(event.userId(), event.orderId());
+        consumeLogRepository.markSuccess(messageId, "orderCreatedListener");
+    }
 }
 ```
 
-也可以用业务唯一键兜：
+也可以用业务唯一约束兜底：
 
 ```sql
 create unique index uk_coupon_order on user_coupon(order_id, coupon_type);
 ```
 
-原则：
+优先级：
 
-- 消息重复不是异常，是 MQ 使用前提。
-- 幂等优先用数据库唯一约束兜底。
-- 只靠 Redis 去重，要考虑过期和丢失。
-
-## 死信队列怎么用
-
-消息进入死信常见原因：
-
-- 消费者 `nack` 且不重新入队。
-- 消息过期。
-- 队列达到长度限制。
-
-死信队列用途：
-
-- 保存失败消息。
-- 后台人工查看。
-- 定时补偿重试。
-- 排查失败原因。
-
-不要让死信队列只是“失败垃圾桶”。至少要有：
-
-- 失败原因日志。
-- messageId。
-- 原始 exchange / routingKey。
-- 重试次数。
-- 人工重放入口或脚本。
-
-查看死信：
-
-```bash
-docker exec -it flashmart-rabbitmq rabbitmqctl list_queues -p flashmart name messages consumers
+```text
+数据库唯一约束 > 消费日志表 > Redis 短期去重
 ```
 
-## 本地验证流程
+Redis 去重可以做辅助，但不要单独承担核心幂等。
+
+## 死信队列
+
+主队列配置了：
+
+```text
+x-dead-letter-exchange = flashmart.order.dlx.exchange
+x-dead-letter-routing-key = order.created.failed
+```
+
+消费者失败时：
+
+```java
+channel.basicNack(deliveryTag, false, false);
+```
+
+消息会进入：
+
+```text
+flashmart.order.created.dlq
+```
+
+死信队列要用来排查和补偿：
+
+- 看失败消息体。
+- 看 messageId。
+- 看失败日志。
+- 修复业务后手动重放。
+- 或由补偿任务按规则重试。
+
+不要只建 DLQ 不处理。那只是把问题换了个地方堆积。
+
+## 本地验证
 
 启动 RabbitMQ：
 
@@ -617,7 +679,7 @@ docker exec -it flashmart-rabbitmq rabbitmqctl list_queues -p flashmart name mes
 docker compose up -d
 ```
 
-确认 broker 状态：
+确认 broker：
 
 ```bash
 docker exec -it flashmart-rabbitmq rabbitmq-diagnostics status
@@ -629,102 +691,104 @@ docker exec -it flashmart-rabbitmq rabbitmq-diagnostics status
 docker exec -it flashmart-rabbitmq rabbitmqctl list_queues -p flashmart name messages consumers
 ```
 
-启动 Spring Boot 后，看管理台：
+启动 Spring Boot 后，打开管理台：
 
 ```text
 http://localhost:15672
 ```
 
-重点看：
-
-- Exchanges 是否存在。
-- Queues 是否存在。
-- Bindings 是否正确。
-- Ready 消息是否堆积。
-- Unacked 是否一直不降。
-- Consumers 是否为 0。
-
-## 常见坑
-
-### 连接不上
-
 检查：
 
-- Spring 连接的是 `5672`，不是 `15672`。
-- `virtual-host` 是否正确。
-- 用户是否有该 vhost 权限。
-- 容器是否启动。
-- Docker 网络里服务名是否写对。
+- Exchanges 是否有 `flashmart.order.event.exchange`。
+- Queues 是否有 `flashmart.order.created.queue`。
+- Bindings 是否连接正确。
+- Consumers 是否大于 0。
+- Ready 是否堆积。
+- Unacked 是否一直不降。
 
-### 管理台能打开，应用连不上
+## 常见问题
 
-管理台走 `15672`，AMQP 客户端走 `5672`。这是两个端口。
+### 应用连不上
+
+先查：
+
+- 连接端口是不是 `5672`。
+- 管理台端口 `15672` 不能给 Spring Boot 用。
+- vhost 是否写对。
+- 用户是否有 vhost 权限。
+- Docker 容器是否运行。
 
 ### 消息发了但队列没有
 
-检查：
+重点查：
 
 - exchange 名称。
 - routing key。
-- binding 是否存在。
-- `template.mandatory` 和 returns callback 是否开启。
+- binding。
+- `mandatory` 是否开启。
+- returns callback 是否打印日志。
 
 ### 消费者一直重复消费
 
 常见原因：
 
-- 失败后 `basicNack(..., true)` 重新入队。
-- 业务代码一直抛同一个异常。
-- 没有死信队列。
-- 自动重试配置不合理。
+- 失败后 `requeue=true`。
+- 业务代码一直抛异常。
+- 没有 DLQ。
+- 自动重试和手动 ack 混乱。
 
-### 队列里 Unacked 很多
+先改成失败进 DLQ，把现场留下来。
 
-说明消息被消费者拿走但没有确认。
+### Unacked 很高
 
-检查：
+说明消费者拿了消息但没确认。
 
-- 是否忘记 `basicAck`。
-- 消费逻辑是否卡住。
-- prefetch 是否太大。
-- 消费者线程是否阻塞。
+可能是：
+
+- 忘记 ack。
+- 业务卡住。
+- 消费线程池满。
+- prefetch 太大。
+- 下游接口超时。
 
 ### JSON 转换失败
 
 检查：
 
-- 生产者和消费者使用的 message converter 是否一致。
+- 生产者和消费者 converter 是否一致。
 - DTO 包名是否可信。
-- 字段是否改名。
-- 是否直接传了 Entity。
-- Boot 4/3 的 Jackson converter 是否用错。
+- Boot 4/3 的 converter 是否用错。
+- 字段类型是否改过。
+- 是否直接发了 Entity。
 
 ## 落地检查清单
 
-- [ ] Docker Compose 能启动 RabbitMQ。
+- [ ] 本地 RabbitMQ 能启动。
 - [ ] 管理台 `15672` 能访问。
 - [ ] Spring Boot 连接 `5672`。
-- [ ] 已创建业务 vhost、用户、权限。
-- [ ] 不使用生产 `guest/guest`。
-- [ ] exchange、queue、binding 都用 Bean 声明。
-- [ ] 队列 durable。
-- [ ] 配了 DLX 和 DLQ。
-- [ ] 生产者开启 confirm 和 returns。
+- [ ] vhost、用户、权限正确。
+- [ ] exchange、queue、binding 用代码声明。
+- [ ] 主队列配置 DLX。
+- [ ] 死信队列能看到失败消息。
+- [ ] producer confirm 开启。
+- [ ] returns callback 开启。
 - [ ] 消息带 `messageId`。
-- [ ] 消费者手动 ack。
-- [ ] 消费失败不会无限 requeue。
+- [ ] 消费端手动 ack。
+- [ ] 失败不会无限 requeue。
 - [ ] 消费端有幂等。
-- [ ] DTO 稳定，不直接传 Entity。
+- [ ] DTO 不直接用 Entity。
 - [ ] 管理台不暴露公网。
 
 ## 最后记一句话
 
-RabbitMQ 和 Spring 集成不难，难的是别只做到“能发能收”：确认、死信、幂等、监控才是工程里真正保命的部分。
+Spring Boot 整合 RabbitMQ 不难，真正要写清的是：消息发到哪里、失败去哪、重复怎么办、堆积怎么看。
 
 ## 参考
 
 - [RabbitMQ Installing RabbitMQ](https://www.rabbitmq.com/docs/download)
 - [RabbitMQ Management Plugin](https://www.rabbitmq.com/docs/management)
 - [RabbitMQ Access Control](https://www.rabbitmq.com/docs/access-control)
+- [RabbitMQ Publisher Confirms](https://www.rabbitmq.com/docs/confirms)
 - [Spring AMQP RabbitTemplate](https://docs.spring.io/spring-amqp/reference/amqp/template.html)
 - [Spring AMQP Message Converters](https://docs.spring.io/spring-amqp/reference/amqp/message-converters.html)
+- [Spring AMQP Listener Concurrency](https://docs.spring.io/spring-amqp/reference/amqp/listener-concurrency.html)

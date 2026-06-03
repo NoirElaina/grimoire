@@ -249,6 +249,17 @@ export default defineConfig({
           ]
         },
         {
+          text: '业务场景',
+          collapsed: true,
+          items: [
+            createDocItem(
+              'notes/java-backend/order-timeout-close.md',
+              '/notes/java-backend/order-timeout-close',
+              '订单支付超时关闭'
+            )
+          ]
+        },
+        {
           text: '微服务组件',
           collapsed: true,
           items: [
@@ -333,6 +344,46 @@ export default defineConfig({
               'notes/rabbitmq/install-spring.md',
               '/notes/rabbitmq/install-spring',
               '02 安装与 Spring 集成'
+            ),
+            createDocItem(
+              'notes/rabbitmq/transaction-after-commit.md',
+              '/notes/rabbitmq/transaction-after-commit',
+              '03 事务同步与 MQ'
+            ),
+            createDocItem(
+              'notes/rabbitmq/delay-queue.md',
+              '/notes/rabbitmq/delay-queue',
+              '04 延迟队列'
+            ),
+            createDocItem(
+              'notes/rabbitmq/dead-letter-queue.md',
+              '/notes/rabbitmq/dead-letter-queue',
+              '05 死信队列'
+            ),
+            createDocItem(
+              'notes/rabbitmq/message-idempotency.md',
+              '/notes/rabbitmq/message-idempotency',
+              '06 MQ 幂等'
+            ),
+            createDocItem(
+              'notes/rabbitmq/delayed-message-plugin.md',
+              '/notes/rabbitmq/delayed-message-plugin',
+              '07 延迟消息插件'
+            ),
+            createDocItem(
+              'notes/rabbitmq/reliability-overview.md',
+              '/notes/rabbitmq/reliability-overview',
+              '08 MQ 可靠性'
+            ),
+            createDocItem(
+              'notes/rabbitmq/producer-reliability.md',
+              '/notes/rabbitmq/producer-reliability',
+              '09 生产者可靠性'
+            ),
+            createDocItem(
+              'notes/rabbitmq/consumer-reliability.md',
+              '/notes/rabbitmq/consumer-reliability',
+              '10 消费者可靠性'
             )
           ]
         }

@@ -29,6 +29,10 @@ sidebarTitle: 专题首页
 
 后面这组可以继续补：事务传播行为、事务失效场景、本地事务与外部副作用、事务和 MQ 最终一致性。
 
+## 业务场景
+
+- [订单支付超时关闭](/notes/java-backend/order-timeout-close)
+
 ## 微服务组件
 
 - [OpenFeign 使用笔记](/notes/java-backend/openfeign)
@@ -39,4 +43,5 @@ sidebarTitle: 专题首页
 
 - MyBatis / JPA 使用规范
 - MQ 与事件驱动模板
+- 支付系统设计
 - JVM 与性能调优笔记
