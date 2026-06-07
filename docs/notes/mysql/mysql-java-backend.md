@@ -1,6 +1,6 @@
 ---
 title: MySQL 与 Java 后端
-sidebarTitle: 06 Java 后端接入
+sidebarTitle: Java 后端接入
 ---
 
 # MySQL 与 Java 后端

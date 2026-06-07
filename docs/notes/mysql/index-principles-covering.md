@@ -35,6 +35,29 @@ sidebarTitle: 索引原理与回表
 - 索引太多会拖慢 `INSERT` / `UPDATE` / `DELETE`。
 - 优化器可能选错索引，需要统计信息和 SQL 形态配合。
 
+## MySQL 常见索引数据结构
+
+不要把“MySQL 索引”只理解成一种结构。
+
+常见结构大致是：
+
+| 索引类型 | 常见结构 | 典型场景 |
+| --- | --- | --- |
+| InnoDB 普通索引 | B+Tree | 主键、唯一索引、普通索引、联合索引 |
+| InnoDB FULLTEXT | 倒排索引 | 文本分词检索 |
+| SPATIAL 索引 | R-Tree | 空间数据 |
+| MEMORY hash index | Hash | 内存表等值查询 |
+
+日常后端项目里，说 MySQL 索引结构，通常重点说 InnoDB 的 B+Tree。
+
+因为大多数业务表都是：
+
+```sql
+engine = InnoDB
+```
+
+而 InnoDB 的主键索引、唯一索引、普通索引、联合索引都围绕 B+Tree 展开。
+
 ## InnoDB 为什么常用 B+Tree
 
 InnoDB 普通索引使用 B+Tree 结构。
@@ -58,6 +81,55 @@ root page
 不要把 MySQL 索引理解成普通二叉树。
 
 磁盘数据库关心的是页访问次数，不是单纯比较次数。
+
+## B 树和 B+Tree 的区别
+
+先说结论：
+
+```text
+数据库索引更偏向 B+Tree，因为它更适合磁盘页、范围查询和顺序扫描。
+```
+
+对比：
+
+| 点 | B 树 | B+Tree |
+| --- | --- | --- |
+| 数据存放 | 内部节点和叶子节点都可能存数据 | 真实数据主要在叶子节点 |
+| 内部节点 | 存 key，也可能存 row data | 只存 key 和指针，能放更多 key |
+| 树高度 | 同样数据量下可能更高 | 分叉更多，树高度更低 |
+| 等值查询 | 命中内部节点可能直接返回 | 一般走到叶子节点 |
+| 范围查询 | 需要中序遍历，复杂一些 | 叶子节点有序链表，天然适合范围扫描 |
+| 磁盘 IO | 内部节点存数据会降低 fanout | 内部节点更小，减少页访问 |
+
+为什么 B+Tree 更适合 MySQL：
+
+```text
+一页通常是固定大小。
+内部节点不存整行数据，就能放更多 key。
+key 越多，分叉越多，树越矮。
+树越矮，磁盘 IO 越少。
+```
+
+范围查询也更自然：
+
+```sql
+select *
+from orders
+where create_time >= '2026-06-01'
+  and create_time < '2026-06-02';
+```
+
+B+Tree 可以先定位到第一个满足条件的叶子节点，再沿着叶子链表向后扫。
+
+这就是它适合：
+
+- 等值查询。
+- 范围查询。
+- 排序。
+- 分页。
+- 联合索引最左前缀。
+
+的原因。
 
 ## 聚簇索引
 
@@ -429,3 +501,4 @@ ALL：全表扫描。
 - [MySQL InnoDB Indexes](https://dev.mysql.com/doc/refman/8.4/en/innodb-indexes.html)
 - [MySQL Clustered and Secondary Indexes](https://dev.mysql.com/doc/refman/8.1/en/innodb-index-types.html)
 - [MySQL Optimizing Queries with EXPLAIN](https://dev.mysql.com/doc/refman/8.4/en/using-explain.html)
+- [MySQL How MySQL Uses Indexes](https://dev.mysql.com/doc/refman/8.4/en/mysql-indexes.html)

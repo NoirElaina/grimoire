@@ -1,6 +1,6 @@
 ---
 title: Redis 分布式锁
-sidebarTitle: 05 分布式锁
+sidebarTitle: 分布式锁
 ---
 
 # Redis 分布式锁

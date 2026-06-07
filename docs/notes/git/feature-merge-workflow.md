@@ -1,6 +1,6 @@
 ---
 title: 功能分支合并流程
-sidebarTitle: 03 功能分支合并
+sidebarTitle: 功能分支合并
 ---
 
 # 功能分支合并流程

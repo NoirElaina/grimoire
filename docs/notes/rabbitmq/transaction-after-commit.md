@@ -1,6 +1,6 @@
 ---
 title: Spring 事务同步与 MQ
-sidebarTitle: 03 事务同步与 MQ
+sidebarTitle: 事务同步与 MQ
 ---
 
 # Spring 事务同步与 MQ

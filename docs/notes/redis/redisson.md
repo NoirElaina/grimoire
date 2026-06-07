@@ -1,6 +1,6 @@
 ---
 title: Redisson 使用笔记
-sidebarTitle: 06 Redisson
+sidebarTitle: Redisson
 ---
 
 # Redisson 使用笔记

@@ -1,6 +1,6 @@
 ---
 title: MySQL 索引与 EXPLAIN
-sidebarTitle: 03 索引与 EXPLAIN
+sidebarTitle: 索引与 EXPLAIN
 ---
 
 # MySQL 索引与 EXPLAIN
@@ -375,25 +375,130 @@ where create_time >= '2026-06-01 00:00:00'
 把计算放到常量侧。
 ```
 
-### 左模糊
+### LIKE 索引失效场景
 
-可能无法有效使用普通 B+Tree 索引：
+`LIKE` 能不能用索引，关键看能不能从索引左边开始定位。
 
-```sql
-where username like '%alice'
-```
+普通 B+Tree 索引按字符串从左到右排序。
 
-前缀匹配更友好：
+所以前缀匹配比较友好：
 
 ```sql
 where username like 'alice%'
 ```
 
+它可以定位到 `alice` 开头的一段范围。
+
+下面这些场景常见地无法有效使用普通 B+Tree 索引。
+
+#### 左模糊
+
+不推荐：
+
+```sql
+where username like '%alice'
+```
+
+原因：
+
+```text
+不知道字符串左边是什么，B+Tree 没法从有序索引的起点定位。
+```
+
+#### 前后模糊
+
+不推荐：
+
+```sql
+where username like '%alice%'
+```
+
+这类“包含搜索”通常会变成大量扫描。
+
+#### 函数包裹后再 LIKE
+
+不推荐：
+
+```sql
+where lower(username) like 'alice%'
+```
+
+如果一定要大小写归一：
+
+- 写入时保存规范化字段，比如 `username_lower`。
+- 或使用合适的 collation。
+- 或考虑搜索系统。
+
+#### 参数拼接导致左模糊
+
+很多 Java 代码最后会变成：
+
+```sql
+where product_name like concat('%', #{keyword}, '%')
+```
+
+这就是前后模糊。
+
+小表可以接受。
+
+商品、订单、用户这类大表要谨慎。
+
+#### 联合索引中前导列没命中
+
+索引：
+
+```sql
+key idx_user_status_name(user_id, status, username)
+```
+
+如果 SQL 是：
+
+```sql
+where username like 'alice%'
+```
+
+它没有命中联合索引的左侧列 `user_id`、`status`，很难充分利用这个联合索引。
+
+更适合：
+
+```sql
+where user_id = #{userId}
+  and status = 1
+  and username like 'alice%'
+```
+
+#### 选择性太差
+
+即使是前缀匹配，也不一定总会走索引：
+
+```sql
+where product_name like '手机%'
+```
+
+如果“手机”开头的数据占全表很大比例，优化器可能认为走索引再回表不划算。
+
+所以要看：
+
+- `EXPLAIN` 的 `type`。
+- `key` 是否命中预期索引。
+- `rows` 是否过大。
+- 是否大量回表。
+
 如果要任意包含搜索：
 
 - 小数据量可以接受。
-- 中大数据量考虑搜索引擎。
+- 中大数据量考虑全文索引或搜索引擎。
 - 或设计专门搜索表。
+
+不要为了模糊搜索给所有字段乱建普通索引。
+
+普通 B+Tree 索引最擅长的是：
+
+```sql
+where username = 'alice'
+where username like 'alice%'
+where username >= 'alice' and username < 'alicf'
+```
 
 ### 隐式类型转换
 

@@ -1,6 +1,6 @@
 ---
 title: RabbitMQ 安装配置与 Spring Boot 集成
-sidebarTitle: 02 安装与 Spring 集成
+sidebarTitle: 安装与 Spring 集成
 ---
 
 # RabbitMQ 安装配置与 Spring Boot 集成

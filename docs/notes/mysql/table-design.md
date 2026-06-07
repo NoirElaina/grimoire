@@ -1,6 +1,6 @@
 ---
 title: MySQL 表设计规范
-sidebarTitle: 02 表设计
+sidebarTitle: 表设计
 ---
 
 # MySQL 表设计规范
@@ -55,6 +55,60 @@ create table orders (...);
 这一步决定后面的字段和索引。
 
 如果访问路径没写，索引基本就是猜的。
+
+## 设计一张表的固定流程
+
+建表可以按这个顺序走：
+
+```text
+1. 定业务对象
+   一行数据到底表达什么。
+
+2. 定生命周期
+   创建、修改、删除、状态流转有哪些。
+
+3. 定写入入口
+   哪些接口会插入或更新这张表。
+
+4. 定查询入口
+   前台列表、详情、后台查询、定时任务分别怎么查。
+
+5. 定唯一约束
+   哪些业务字段不能重复，必须由数据库兜底。
+
+6. 定字段类型
+   金额、状态、时间、字符串、大文本分别怎么存。
+
+7. 定索引
+   每个索引对应哪条 SQL。
+
+8. 定并发策略
+   乐观锁、状态机条件更新、唯一键、库存条件扣减。
+
+9. 定迁移策略
+   老数据、默认值、回填、线上 DDL 怎么处理。
+```
+
+不要把“字段设计”和“索引设计”分开想。
+
+比如商品表里有 `category_id`，不是因为“商品有类目”这么简单，而是因为有这条查询：
+
+```sql
+select id, product_name, main_image, min_sale_price
+from products
+where category_id = #{categoryId}
+  and status = 1
+order by sort desc, id desc
+limit #{limit};
+```
+
+所以索引要跟着访问路径走：
+
+```sql
+key idx_products_category_status_sort (category_id, status, sort, id)
+```
+
+如果某个字段没有展示、过滤、排序、状态流转或唯一约束用途，它可能就不该现在进表。
 
 ## 表名和字段命名
 

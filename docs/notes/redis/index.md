@@ -7,19 +7,19 @@ sidebarTitle: 专题首页
 
 > Redis 专题只记后端项目真正会踩的点：key、TTL、数据结构、缓存异常、一致性、分布式锁、Redisson、Spring Boot 接入。
 
-## 阅读顺序
+## 内容入口
 
-| 顺序 | 笔记 | 解决的问题 |
+| 分组 | 笔记 | 解决的问题 |
 | --- | --- | --- |
-| 00 | [Redis 缓存设计总览](/notes/redis/cache-design) | 先建立工程边界：Redis 能做什么、不能做什么 |
-| 01 | [Redis 入门与基础模型](/notes/redis/redis-basics) | 搞清内存模型、TTL、持久化、淘汰、连接池 |
-| 02 | [Redis 数据结构实战](/notes/redis/data-structures) | String、Hash、List、Set、ZSet、Bitmap、HLL、Stream 怎么选 |
-| 03 | [Redis 缓存异常治理](/notes/redis/cache-problems) | 穿透、击穿、雪崩、大 key、热点 key 怎么处理 |
-| 04 | [Redis 与 MySQL 缓存一致性](/notes/redis/cache-consistency) | 写库、删缓存、事务提交后删除、失败重试怎么设计 |
-| 05 | [Redis 分布式锁](/notes/redis/distributed-lock) | `SET NX PX`、唯一值、Lua 释放、锁失效场景 |
-| 06 | [Redis 分布式锁故障场景](/notes/redis/distributed-lock-failover) | 主节点宕机、锁复制丢失、Redlock、fencing token、数据库兜底 |
-| 07 | [Redisson 使用笔记](/notes/redis/redisson) | Spring Boot 里怎么用 `RLock`，看门狗和租约怎么理解 |
-| 08 | [RedisTemplate JSON 序列化配置](/notes/redis/redis-template-json) | key/value 序列化、Spring Data Redis 4 迁移问题 |
+| 总览 | [Redis 缓存设计总览](/notes/redis/cache-design) | 先建立工程边界：Redis 能做什么、不能做什么 |
+| 基础 | [Redis 入门与基础模型](/notes/redis/redis-basics) | 搞清内存模型、TTL、持久化、淘汰、连接池 |
+| 基础 | [Redis 数据结构实战](/notes/redis/data-structures) | String、Hash、List、Set、ZSet、Bitmap、HLL、Stream 怎么选 |
+| 缓存 | [Redis 缓存异常治理](/notes/redis/cache-problems) | 穿透、击穿、雪崩、大 key、热点 key 怎么处理 |
+| 缓存 | [Redis 与 MySQL 缓存一致性](/notes/redis/cache-consistency) | 写库、删缓存、事务提交后删除、失败重试怎么设计 |
+| 锁 | [Redis 分布式锁](/notes/redis/distributed-lock) | `SET NX PX`、唯一值、Lua 释放、锁失效场景 |
+| 锁 | [Redis 分布式锁故障场景](/notes/redis/distributed-lock-failover) | 主节点宕机、锁复制丢失、Redlock、fencing token、数据库兜底 |
+| 锁 | [Redisson 使用笔记](/notes/redis/redisson) | Spring Boot 里怎么用 `RLock`，看门狗和租约怎么理解 |
+| 接入 | [RedisTemplate JSON 序列化配置](/notes/redis/redis-template-json) | key/value 序列化、Spring Data Redis 4 迁移问题 |
 
 ## 先定边界
 

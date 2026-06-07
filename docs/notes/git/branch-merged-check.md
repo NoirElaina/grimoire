@@ -1,6 +1,6 @@
 ---
 title: 判断分支是否已经合并
-sidebarTitle: 05 分支合并判断
+sidebarTitle: 分支合并判断
 ---
 
 # 判断分支是否已经合并

@@ -7,14 +7,16 @@ sidebarTitle: 专题首页
 
 > 这组 Git 笔记先补基础，再讲合并。先知道工作区、暂存区、提交、分支、远端是什么，再去看功能分支怎么安全合并到 main。
 
-## 阅读顺序
+## 内容入口
 
-1. [Git 入门](/notes/git/getting-started)
-2. [Git 基础命令](/notes/git/basic-commands)
-3. [功能分支合并流程](/notes/git/feature-merge-workflow)
-4. [合并策略：`--no-ff` 与 `-s ours`](/notes/git/merge-strategies)
-5. [判断分支是否已经合并](/notes/git/branch-merged-check)
-6. [合并前后的验证清单](/notes/git/merge-verification)
+| 笔记 | 重点 |
+| --- | --- |
+| [Git 入门](/notes/git/getting-started) | 工作区、暂存区、本地仓库、分支、远端 |
+| [Git 基础命令](/notes/git/basic-commands) | `status`、`diff`、`add`、`commit`、`restore`、`push` |
+| [功能分支合并流程](/notes/git/feature-merge-workflow) | 从功能分支验证、同步 main、合并到推送 |
+| [合并策略：`--no-ff` 与 `-s ours`](/notes/git/merge-strategies) | 真实合并和记录合并的区别 |
+| [判断分支是否已经合并](/notes/git/branch-merged-check) | `branch --no-merged`、`cherry -v` 判断补丁关系 |
+| [合并前后的验证清单](/notes/git/merge-verification) | 构建、编译、`diff --check` 和推送前确认 |
 
 ## 这组笔记先解决什么
 

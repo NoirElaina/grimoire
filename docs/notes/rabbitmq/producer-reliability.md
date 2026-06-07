@@ -1,6 +1,6 @@
 ---
 title: RabbitMQ 生产者可靠性
-sidebarTitle: 09 生产者可靠性
+sidebarTitle: 生产者可靠性
 ---
 
 # RabbitMQ 生产者可靠性

@@ -1,6 +1,6 @@
 ---
 title: 合并验证清单
-sidebarTitle: 06 合并验证
+sidebarTitle: 合并验证
 ---
 
 # 合并验证清单

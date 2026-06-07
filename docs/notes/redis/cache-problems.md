@@ -1,6 +1,6 @@
 ---
 title: Redis 缓存异常治理
-sidebarTitle: 03 缓存异常治理
+sidebarTitle: 缓存异常治理
 ---
 
 # Redis 缓存异常治理

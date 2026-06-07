@@ -1,11 +1,47 @@
 ---
 title: Redis 数据结构实战
-sidebarTitle: 02 数据结构
+sidebarTitle: 数据结构
 ---
 
 # Redis 数据结构实战
 
 > Redis 不是只有 `String`。数据结构选对了，命令天然就是业务能力；选错了，后面会变成大 key、慢命令和一致性坑。
+
+## 先把数据结构说全
+
+项目里最常用的是 8 类：
+
+| 类型 | 一句话理解 | 常见命令 |
+| --- | --- | --- |
+| `String` | 一个 key 对应一个字符串、数字或序列化对象 | `GET`、`SET`、`INCR`、`MGET` |
+| `Hash` | 一个 key 下面有多个 field/value | `HSET`、`HGET`、`HINCRBY`、`HGETALL` |
+| `List` | 按插入顺序排列的双端列表 | `LPUSH`、`RPUSH`、`LPOP`、`LRANGE` |
+| `Set` | 无序去重集合 | `SADD`、`SISMEMBER`、`SINTER`、`SCARD` |
+| `ZSet` | 带 score 的有序集合 | `ZADD`、`ZINCRBY`、`ZRANGE`、`ZRANGEBYSCORE` |
+| `Bitmap` | 用 bit 表达大量布尔状态 | `SETBIT`、`GETBIT`、`BITCOUNT` |
+| `HyperLogLog` | 近似去重计数 | `PFADD`、`PFCOUNT`、`PFMERGE` |
+| `Stream` | 追加式消息流和消费组 | `XADD`、`XREADGROUP`、`XACK`、`XPENDING` |
+
+面试里问“Redis 有哪些数据结构”，不要只背名字。最好按这个顺序答：
+
+```text
+先说基本结构：
+    String、Hash、List、Set、ZSet。
+
+再说扩展结构：
+    Bitmap、HyperLogLog、Stream。
+
+最后落到项目选择：
+    商品详情缓存用 String。
+    购物车用 Hash。
+    收藏去重用 Set。
+    排行榜用 ZSet。
+    签到用 Bitmap。
+    UV 粗略统计用 HyperLogLog。
+    轻量消息流可以用 Stream，但可靠消息优先 MQ。
+```
+
+这样答不是“背八股”，而是把结构、命令和业务场景连起来。
 
 ## 选型总表
 

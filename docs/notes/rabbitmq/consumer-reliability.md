@@ -1,6 +1,6 @@
 ---
 title: RabbitMQ 消费者可靠性
-sidebarTitle: 10 消费者可靠性
+sidebarTitle: 消费者可靠性
 ---
 
 # RabbitMQ 消费者可靠性

@@ -1,6 +1,6 @@
 ---
 title: Git 入门
-sidebarTitle: 01 Git 入门
+sidebarTitle: Git 入门
 ---
 
 # Git 入门

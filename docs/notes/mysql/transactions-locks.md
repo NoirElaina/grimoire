@@ -1,6 +1,6 @@
 ---
 title: MySQL 事务与锁
-sidebarTitle: 04 事务与锁
+sidebarTitle: 事务与锁
 ---
 
 # MySQL 事务与锁

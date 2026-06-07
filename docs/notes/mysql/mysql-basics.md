@@ -1,6 +1,6 @@
 ---
 title: MySQL 入门与基础模型
-sidebarTitle: 01 基础模型
+sidebarTitle: 基础模型
 ---
 
 # MySQL 入门与基础模型

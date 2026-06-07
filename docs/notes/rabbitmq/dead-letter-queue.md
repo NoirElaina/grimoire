@@ -1,6 +1,6 @@
 ---
 title: RabbitMQ 死信队列
-sidebarTitle: 05 死信队列
+sidebarTitle: 死信队列
 ---
 
 # RabbitMQ 死信队列

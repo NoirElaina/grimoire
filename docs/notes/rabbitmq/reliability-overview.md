@@ -1,6 +1,6 @@
 ---
 title: MQ 可靠性总览
-sidebarTitle: 08 MQ 可靠性
+sidebarTitle: MQ 可靠性
 ---
 
 # MQ 可靠性总览

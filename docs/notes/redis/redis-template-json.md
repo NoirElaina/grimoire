@@ -1,6 +1,6 @@
 ---
 title: RedisTemplate JSON 序列化配置
-sidebarTitle: 07 RedisTemplate 配置
+sidebarTitle: RedisTemplate 配置
 ---
 
 # RedisTemplate JSON 序列化配置

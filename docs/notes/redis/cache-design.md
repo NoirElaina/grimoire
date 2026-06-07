@@ -1,6 +1,6 @@
 ---
 title: Redis 基础使用与缓存设计
-sidebarTitle: 00 缓存设计总览
+sidebarTitle: 缓存设计总览
 ---
 
 # Redis 基础使用与缓存设计

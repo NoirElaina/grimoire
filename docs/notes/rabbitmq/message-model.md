@@ -1,6 +1,6 @@
 ---
 title: RabbitMQ 消息模型与核心概念
-sidebarTitle: 01 消息模型
+sidebarTitle: 消息模型
 ---
 
 # RabbitMQ 消息模型与核心概念

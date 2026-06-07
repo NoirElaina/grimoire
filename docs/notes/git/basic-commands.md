@@ -1,6 +1,6 @@
 ---
 title: Git 基础命令
-sidebarTitle: 02 基础命令
+sidebarTitle: 基础命令
 ---
 
 # Git 基础命令

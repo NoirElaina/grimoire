@@ -1,6 +1,6 @@
 ---
 title: MySQL 慢 SQL 排查
-sidebarTitle: 05 慢 SQL 排查
+sidebarTitle: 慢 SQL 排查
 ---
 
 # MySQL 慢 SQL 排查

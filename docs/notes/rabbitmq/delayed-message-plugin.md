@@ -1,6 +1,6 @@
 ---
 title: RabbitMQ 延迟消息插件
-sidebarTitle: 07 延迟消息插件
+sidebarTitle: 延迟消息插件
 ---
 
 # RabbitMQ 延迟消息插件

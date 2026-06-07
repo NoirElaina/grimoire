@@ -1,6 +1,6 @@
 ---
 title: RabbitMQ 延迟队列
-sidebarTitle: 04 延迟队列
+sidebarTitle: 延迟队列
 ---
 
 # RabbitMQ 延迟队列

@@ -251,6 +251,36 @@ export default defineConfig({
               'notes/java-backend/java-stream.md',
               '/notes/java-backend/java-stream',
               'Java Stream'
+            ),
+            createDocItem(
+              'notes/java-backend/java-collections.md',
+              '/notes/java-backend/java-collections',
+              'Java 集合'
+            ),
+            createDocItem(
+              'notes/java-backend/hashmap-structure.md',
+              '/notes/java-backend/hashmap-structure',
+              'HashMap 结构'
+            ),
+            createDocItem(
+              'notes/java-backend/java-thread-pools.md',
+              '/notes/java-backend/java-thread-pools',
+              'JDK 线程池'
+            ),
+            createDocItem(
+              'notes/java-backend/threadlocal.md',
+              '/notes/java-backend/threadlocal',
+              'ThreadLocal'
+            ),
+            createDocItem(
+              'notes/java-backend/synchronized.md',
+              '/notes/java-backend/synchronized',
+              'synchronized'
+            ),
+            createDocItem(
+              'notes/java-backend/java-lock.md',
+              '/notes/java-backend/java-lock',
+              'Lock'
             )
           ]
         },
@@ -445,47 +475,62 @@ export default defineConfig({
             createDocItem(
               'notes/mysql/mysql-engineering.md',
               '/notes/mysql/mysql-engineering',
-              '00 工程实践总览'
+              '工程实践总览'
             ),
             createDocItem(
               'notes/mysql/mysql-basics.md',
               '/notes/mysql/mysql-basics',
-              '01 基础模型'
+              '基础模型'
             ),
             createDocItem(
               'notes/mysql/table-design.md',
               '/notes/mysql/table-design',
-              '02 表设计'
+              '表设计'
             ),
             createDocItem(
               'notes/mysql/indexes-explain.md',
               '/notes/mysql/indexes-explain',
-              '03 索引与 EXPLAIN'
+              '索引与 EXPLAIN'
             ),
             createDocItem(
               'notes/mysql/index-principles-covering.md',
               '/notes/mysql/index-principles-covering',
-              '04 索引原理与回表'
+              '索引原理与回表'
             ),
             createDocItem(
               'notes/mysql/transaction-isolation-mvcc.md',
               '/notes/mysql/transaction-isolation-mvcc',
-              '05 事务隔离与 MVCC'
+              '事务隔离与 MVCC'
             ),
             createDocItem(
               'notes/mysql/transactions-locks.md',
               '/notes/mysql/transactions-locks',
-              '06 事务与锁'
+              '事务与锁'
             ),
             createDocItem(
               'notes/mysql/slow-query-troubleshooting.md',
               '/notes/mysql/slow-query-troubleshooting',
-              '07 慢 SQL 排查'
+              '慢 SQL 排查'
             ),
             createDocItem(
               'notes/mysql/mysql-java-backend.md',
               '/notes/mysql/mysql-java-backend',
-              '08 Java 后端接入'
+              'Java 后端接入'
+            ),
+            createDocItem(
+              'notes/mysql/product-table-design.md',
+              '/notes/mysql/product-table-design',
+              '商品表设计'
+            ),
+            createDocItem(
+              'notes/mysql/multi-table-join.md',
+              '/notes/mysql/multi-table-join',
+              '多表联查'
+            ),
+            createDocItem(
+              'notes/mysql/mongodb-vs-mysql.md',
+              '/notes/mysql/mongodb-vs-mysql',
+              'MongoDB 和 MySQL'
             )
           ]
         }
@@ -504,47 +549,47 @@ export default defineConfig({
             createDocItem(
               'notes/redis/cache-design.md',
               '/notes/redis/cache-design',
-              '00 缓存设计总览'
+              '缓存设计总览'
             ),
             createDocItem(
               'notes/redis/redis-basics.md',
               '/notes/redis/redis-basics',
-              '01 基础模型'
+              '基础模型'
             ),
             createDocItem(
               'notes/redis/data-structures.md',
               '/notes/redis/data-structures',
-              '02 数据结构'
+              '数据结构'
             ),
             createDocItem(
               'notes/redis/cache-problems.md',
               '/notes/redis/cache-problems',
-              '03 缓存异常治理'
+              '缓存异常治理'
             ),
             createDocItem(
               'notes/redis/cache-consistency.md',
               '/notes/redis/cache-consistency',
-              '04 缓存一致性'
+              '缓存一致性'
             ),
             createDocItem(
               'notes/redis/distributed-lock.md',
               '/notes/redis/distributed-lock',
-              '05 分布式锁'
+              '分布式锁'
             ),
             createDocItem(
               'notes/redis/distributed-lock-failover.md',
               '/notes/redis/distributed-lock-failover',
-              '06 分布式锁故障'
+              '分布式锁故障'
             ),
             createDocItem(
               'notes/redis/redisson.md',
               '/notes/redis/redisson',
-              '07 Redisson'
+              'Redisson'
             ),
             createDocItem(
               'notes/redis/redis-template-json.md',
               '/notes/redis/redis-template-json',
-              '08 RedisTemplate 配置'
+              'RedisTemplate 配置'
             )
           ]
         }
@@ -563,52 +608,62 @@ export default defineConfig({
             createDocItem(
               'notes/rabbitmq/message-model.md',
               '/notes/rabbitmq/message-model',
-              '01 消息模型'
+              '消息模型'
             ),
             createDocItem(
               'notes/rabbitmq/install-spring.md',
               '/notes/rabbitmq/install-spring',
-              '02 安装与 Spring 集成'
+              '安装与 Spring 集成'
             ),
             createDocItem(
               'notes/rabbitmq/transaction-after-commit.md',
               '/notes/rabbitmq/transaction-after-commit',
-              '03 事务同步与 MQ'
+              '事务同步与 MQ'
+            ),
+            createDocItem(
+              'notes/rabbitmq/ack-confirm-mechanism.md',
+              '/notes/rabbitmq/ack-confirm-mechanism',
+              'ACK 确认机制'
             ),
             createDocItem(
               'notes/rabbitmq/delay-queue.md',
               '/notes/rabbitmq/delay-queue',
-              '04 延迟队列'
+              '延迟队列'
             ),
             createDocItem(
               'notes/rabbitmq/dead-letter-queue.md',
               '/notes/rabbitmq/dead-letter-queue',
-              '05 死信队列'
+              '死信队列'
             ),
             createDocItem(
               'notes/rabbitmq/message-idempotency.md',
               '/notes/rabbitmq/message-idempotency',
-              '06 MQ 幂等'
+              'MQ 幂等'
             ),
             createDocItem(
               'notes/rabbitmq/delayed-message-plugin.md',
               '/notes/rabbitmq/delayed-message-plugin',
-              '07 延迟消息插件'
+              '延迟消息插件'
             ),
             createDocItem(
               'notes/rabbitmq/reliability-overview.md',
               '/notes/rabbitmq/reliability-overview',
-              '08 MQ 可靠性'
+              'MQ 可靠性'
             ),
             createDocItem(
               'notes/rabbitmq/producer-reliability.md',
               '/notes/rabbitmq/producer-reliability',
-              '09 生产者可靠性'
+              '生产者可靠性'
             ),
             createDocItem(
               'notes/rabbitmq/consumer-reliability.md',
               '/notes/rabbitmq/consumer-reliability',
-              '10 消费者可靠性'
+              '消费者可靠性'
+            ),
+            createDocItem(
+              'notes/rabbitmq/project-mq-usage.md',
+              '/notes/rabbitmq/project-mq-usage',
+              '项目用法'
             )
           ]
         }
@@ -627,32 +682,32 @@ export default defineConfig({
             createDocItem(
               'notes/git/getting-started.md',
               '/notes/git/getting-started',
-              '01 Git 入门'
+              'Git 入门'
             ),
             createDocItem(
               'notes/git/basic-commands.md',
               '/notes/git/basic-commands',
-              '02 基础命令'
+              '基础命令'
             ),
             createDocItem(
               'notes/git/feature-merge-workflow.md',
               '/notes/git/feature-merge-workflow',
-              '03 功能分支合并'
+              '功能分支合并'
             ),
             createDocItem(
               'notes/git/merge-strategies.md',
               '/notes/git/merge-strategies',
-              '04 合并策略'
+              '合并策略'
             ),
             createDocItem(
               'notes/git/branch-merged-check.md',
               '/notes/git/branch-merged-check',
-              '05 分支合并判断'
+              '分支合并判断'
             ),
             createDocItem(
               'notes/git/merge-verification.md',
               '/notes/git/merge-verification',
-              '06 合并验证'
+              '合并验证'
             )
           ]
         }

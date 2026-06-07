@@ -1,6 +1,6 @@
 ---
 title: Redis 与 MySQL 缓存一致性
-sidebarTitle: 04 缓存一致性
+sidebarTitle: 缓存一致性
 ---
 
 # Redis 与 MySQL 缓存一致性

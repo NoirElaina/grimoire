@@ -1,6 +1,6 @@
 ---
 title: Git 合并策略
-sidebarTitle: 04 合并策略
+sidebarTitle: 合并策略
 ---
 
 # Git 合并策略
