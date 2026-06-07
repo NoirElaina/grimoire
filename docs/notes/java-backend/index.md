@@ -22,20 +22,27 @@ sidebarTitle: 专题首页
 - [Spring Boot 项目骨架](/notes/java-backend/spring-boot-template)
 - [Java 后端分层与 DTO](/notes/java-backend/layering-dto)
 - [接口设计](/notes/java-backend/api-design-template)
+- [Bean Validation 参数校验](/notes/java-backend/bean-validation)
+- [统一异常与错误码](/notes/java-backend/exception-error-code)
+- [日志 traceId 与审计日志](/notes/java-backend/logging-trace-audit)
+- [Maven 依赖管理](/notes/java-backend/maven-dependency-management)
 - [过滤器与拦截器](/notes/java-backend/filter-interceptor)
 - [问题排查](/notes/java-backend/troubleshooting-template)
 - [JWT 鉴权设计笔记](/notes/java-backend/jwt-auth)
 
 ## 数据访问
 
+- [MyBatis 核心地基](/notes/java-backend/mybatis-core)
+- [MyBatis XML 动态 SQL](/notes/java-backend/mybatis-xml-dynamic-sql)
 - [MyBatis-Plus 使用笔记](/notes/java-backend/mybatis-plus)
 - [Spring Boot Flyway 数据库迁移](/notes/java-backend/flyway)
 
 ## 事务与一致性
 
 - [Spring 事务回滚规则](/notes/java-backend/transactional-rollback)
-
-后面这组可以继续补：事务传播行为、事务失效场景、本地事务与外部副作用、事务和 MQ 最终一致性。
+- [Spring 事务传播行为](/notes/java-backend/transaction-propagation)
+- [Spring 事务失效场景](/notes/java-backend/transaction-failure-scenarios)
+- [本地事务与外部副作用](/notes/java-backend/transaction-outbox-side-effects)
 
 ## 项目案例
 
@@ -52,9 +59,9 @@ sidebarTitle: 专题首页
 ## 后面可以继续补
 
 - Java 集合与并发基础
-- Maven / Gradle 依赖管理
-- Bean Validation 深入
-- MyBatis / JPA 使用规范
+- JPA 使用规范
+- 线程池与异步任务
+- JVM 与性能调优笔记
 - MQ 与事件驱动模板
 - 支付系统设计
-- JVM 与性能调优笔记
+- 秒杀库存扣减案例

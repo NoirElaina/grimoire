@@ -236,6 +236,26 @@ export default defineConfig({
               '接口设计模板'
             ),
             createDocItem(
+              'notes/java-backend/bean-validation.md',
+              '/notes/java-backend/bean-validation',
+              'Bean Validation'
+            ),
+            createDocItem(
+              'notes/java-backend/exception-error-code.md',
+              '/notes/java-backend/exception-error-code',
+              '统一异常与错误码'
+            ),
+            createDocItem(
+              'notes/java-backend/logging-trace-audit.md',
+              '/notes/java-backend/logging-trace-audit',
+              '日志 traceId 与审计'
+            ),
+            createDocItem(
+              'notes/java-backend/maven-dependency-management.md',
+              '/notes/java-backend/maven-dependency-management',
+              'Maven 依赖管理'
+            ),
+            createDocItem(
               'notes/java-backend/filter-interceptor.md',
               '/notes/java-backend/filter-interceptor',
               '过滤器与拦截器'
@@ -257,6 +277,16 @@ export default defineConfig({
           collapsed: true,
           items: [
             createDocItem(
+              'notes/java-backend/mybatis-core.md',
+              '/notes/java-backend/mybatis-core',
+              'MyBatis 核心地基'
+            ),
+            createDocItem(
+              'notes/java-backend/mybatis-xml-dynamic-sql.md',
+              '/notes/java-backend/mybatis-xml-dynamic-sql',
+              'MyBatis 动态 SQL'
+            ),
+            createDocItem(
               'notes/java-backend/mybatis-plus.md',
               '/notes/java-backend/mybatis-plus',
               'MyBatis-Plus'
@@ -276,6 +306,21 @@ export default defineConfig({
               'notes/java-backend/transactional-rollback.md',
               '/notes/java-backend/transactional-rollback',
               'Spring 事务回滚'
+            ),
+            createDocItem(
+              'notes/java-backend/transaction-propagation.md',
+              '/notes/java-backend/transaction-propagation',
+              '事务传播行为'
+            ),
+            createDocItem(
+              'notes/java-backend/transaction-failure-scenarios.md',
+              '/notes/java-backend/transaction-failure-scenarios',
+              '事务失效场景'
+            ),
+            createDocItem(
+              'notes/java-backend/transaction-outbox-side-effects.md',
+              '/notes/java-backend/transaction-outbox-side-effects',
+              '事务与外部副作用'
             )
           ]
         },
