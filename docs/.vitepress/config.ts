@@ -234,6 +234,11 @@ export default defineConfig({
               'notes/java-backend/mybatis-plus.md',
               '/notes/java-backend/mybatis-plus',
               'MyBatis-Plus'
+            ),
+            createDocItem(
+              'notes/java-backend/flyway.md',
+              '/notes/java-backend/flyway',
+              'Flyway 数据库迁移'
             )
           ]
         },
@@ -295,7 +300,37 @@ export default defineConfig({
             createDocItem(
               'notes/mysql/mysql-engineering.md',
               '/notes/mysql/mysql-engineering',
-              '01 工程实践'
+              '00 工程实践总览'
+            ),
+            createDocItem(
+              'notes/mysql/mysql-basics.md',
+              '/notes/mysql/mysql-basics',
+              '01 基础模型'
+            ),
+            createDocItem(
+              'notes/mysql/table-design.md',
+              '/notes/mysql/table-design',
+              '02 表设计'
+            ),
+            createDocItem(
+              'notes/mysql/indexes-explain.md',
+              '/notes/mysql/indexes-explain',
+              '03 索引与 EXPLAIN'
+            ),
+            createDocItem(
+              'notes/mysql/transactions-locks.md',
+              '/notes/mysql/transactions-locks',
+              '04 事务与锁'
+            ),
+            createDocItem(
+              'notes/mysql/slow-query-troubleshooting.md',
+              '/notes/mysql/slow-query-troubleshooting',
+              '05 慢 SQL 排查'
+            ),
+            createDocItem(
+              'notes/mysql/mysql-java-backend.md',
+              '/notes/mysql/mysql-java-backend',
+              '06 Java 后端接入'
             )
           ]
         }
@@ -388,6 +423,50 @@ export default defineConfig({
           ]
         }
       ],
+      '/notes/git/': [
+        {
+          text: '笔记',
+          items: [
+            { text: '笔记首页', link: '/notes/' }
+          ]
+        },
+        {
+          text: 'Git',
+          items: [
+            createDocItem('notes/git/index.md', '/notes/git/', '专题首页'),
+            createDocItem(
+              'notes/git/getting-started.md',
+              '/notes/git/getting-started',
+              '01 Git 入门'
+            ),
+            createDocItem(
+              'notes/git/basic-commands.md',
+              '/notes/git/basic-commands',
+              '02 基础命令'
+            ),
+            createDocItem(
+              'notes/git/feature-merge-workflow.md',
+              '/notes/git/feature-merge-workflow',
+              '03 功能分支合并'
+            ),
+            createDocItem(
+              'notes/git/merge-strategies.md',
+              '/notes/git/merge-strategies',
+              '04 合并策略'
+            ),
+            createDocItem(
+              'notes/git/branch-merged-check.md',
+              '/notes/git/branch-merged-check',
+              '05 分支合并判断'
+            ),
+            createDocItem(
+              'notes/git/merge-verification.md',
+              '/notes/git/merge-verification',
+              '06 合并验证'
+            )
+          ]
+        }
+      ],
       '/notes/': [
         {
           text: '笔记',
@@ -402,7 +481,8 @@ export default defineConfig({
             { text: 'Java 后端', link: '/notes/java-backend/' },
             { text: 'MySQL', link: '/notes/mysql/' },
             { text: 'Redis', link: '/notes/redis/' },
-            { text: 'RabbitMQ', link: '/notes/rabbitmq/' }
+            { text: 'RabbitMQ', link: '/notes/rabbitmq/' },
+            { text: 'Git', link: '/notes/git/' }
           ]
         }
       ],

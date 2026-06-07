@@ -22,6 +22,7 @@ sidebarTitle: 专题首页
 ## 数据访问
 
 - [MyBatis-Plus 使用笔记](/notes/java-backend/mybatis-plus)
+- [Spring Boot Flyway 数据库迁移](/notes/java-backend/flyway)
 
 ## 事务与一致性
 

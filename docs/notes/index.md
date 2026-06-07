@@ -56,6 +56,16 @@ pageClass: notes-hub
       <a href="mysql/">进入专题</a>
     </div>
   </section>
+
+  <section class="notes-topic-card">
+    <div class="notes-topic-head">
+      <h2><a href="git/">Git</a></h2>
+      <p>分支合并、验证流程、历史关系和协作规范。</p>
+    </div>
+    <div class="notes-topic-actions">
+      <a href="git/">进入专题</a>
+    </div>
+  </section>
 </div>
 
 ## 通用页

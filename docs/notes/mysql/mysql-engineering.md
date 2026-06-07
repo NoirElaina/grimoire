@@ -1,6 +1,6 @@
 ---
 title: MySQL 工程实践
-sidebarTitle: 01 工程实践
+sidebarTitle: 00 工程实践总览
 ---
 
 # MySQL 工程实践
