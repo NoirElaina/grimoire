@@ -5,40 +5,74 @@ sidebarTitle: 专题首页
 
 # Agents 总览
 
-这一组内容用来沉淀你写 Agent 系统时最常复用的东西：角色设计、提示词结构、工具调用协议、上下文拼装方式。
+这一组只写 Agent 工程落地：主循环、工具协议、上下文、记忆、MCP、编排、人工审批、评测和跨 Agent 通信。
 
-## 建议拆法
+## 阅读路径
 
-- `设计页`：这个 Agent 负责什么，不负责什么
-- `Prompt 页`：System Prompt、约束、输入输出格式
-- `工具页`：工具定义、参数、错误处理、回退策略
-- `案例页`：真实任务里的调用链和问题复盘
+先读“系统怎么跑”，再读“怎么接工具”，最后读“怎么稳定上线”。
 
-## 基础工程页
+```text
+Agent 主循环
+  -> 工具调用协议
+  -> 上下文与记忆
+  -> MCP 实战
+  -> LangGraph 工作流
+  -> Human-in-the-loop
+  -> Agent 评测
+  -> A2A 协议
+```
 
-- [工具调用](/notes/agents/tooling-template)
+## Agent 地基
 
-## 协议与运行时
+| 笔记 | 重点 |
+| --- | --- |
+| [Agent 主循环](/notes/agents/agent-main-loop) | run state、模型调用、工具执行、结果回填、终止条件、trace |
+| [工具调用协议](/notes/agents/tool-calling-protocol) | tool schema、tool_call_id、参数校验、错误协议、重试与权限 |
+| [上下文与记忆](/notes/agents/context-memory) | system、history、RAG、workspace state、memory write、压缩策略 |
+| [MCP 实战](/notes/agents/mcp-practice) | stdio、Streamable HTTP、initialize、tools/list、tools/call、资源与安全 |
 
-- [SSE 流式响应](/notes/agents/sse-streaming)
-- [MCP 协议](/notes/agents/mcp-protocol)
+## 编排与协作
 
-## 源码解析
+| 笔记 | 重点 |
+| --- | --- |
+| [LangGraph 工作流](/notes/agents/langgraph-workflow) | StateGraph、node、edge、checkpoint、thread_id、durable execution |
+| [Human-in-the-loop](/notes/agents/human-in-the-loop) | 审批点、interrupt、审批状态、审计日志、超时与恢复 |
+| [Agent 评测](/notes/agents/agent-evaluation) | 任务成功率、工具选择、参数准确率、安全、成本、trace replay |
+| [A2A 协议](/notes/agents/a2a-protocol) | Agent Card、Message、Part、Task、Artifact、远程 Agent 协作 |
 
-- [Claude 源码解析](/notes/agents/claude-code-analysis/)
-- [01 Claude Code 泄露事件与架构启示](/notes/agents/claude-code-analysis/first-look)
-- [02 QueryEngine 主循环](/notes/agents/claude-code-analysis/query-engine-main-loop)
-- [03 上下文系统](/notes/agents/claude-code-analysis/context-system)
-- [04 权限系统](/notes/agents/claude-code-analysis/permission-system)
-- [05 多 worker 编排](/notes/agents/claude-code-analysis/coordinator-and-workers)
-- [06 平台化](/notes/agents/claude-code-analysis/platformization)
-- [07 Agent Runtime 总结](/notes/agents/claude-code-analysis/agent-runtime-os)
-- [08 上下文压缩机制](/notes/agents/claude-code-analysis/compaction-mechanics)
-- [09 工具系统与运行时能力池](/notes/agents/claude-code-analysis/tool-system)
+## 协议参考
 
-## 以后可以继续补
+| 笔记 | 重点 |
+| --- | --- |
+| [工具调用](/notes/agents/tooling-template) | 基础函数工具模板、入参、出参、错误处理 |
+| [SSE 流式响应](/notes/agents/sse-streaming) | `text/event-stream`、事件格式、断线重连、前后端接法 |
+| [MCP 协议](/notes/agents/mcp-protocol) | stdio、Streamable HTTP、tools/resources/prompts、协议生命周期 |
 
-- 多 Agent 编排模板
-- 记忆 / 上下文窗口策略
-- Agent 评测模板
-- Agent 失败案例库
+## 工程判断
+
+写 Agent 不要先追框架名，先把这些问题拆清楚：
+
+- **主循环**：一次用户请求会触发几轮模型调用，什么时候停。
+- **工具边界**：模型只能提出调用意图，真正执行必须由程序校验、授权、超时和记录。
+- **上下文预算**：哪些内容必须进 prompt，哪些只进检索库，哪些应该压缩或丢弃。
+- **人工审批**：写文件、执行命令、发消息、扣款、删数据这类动作不能默认放行。
+- **可观测性**：每轮模型输入、工具入参、工具结果、错误、token、耗时都要能回放。
+- **评测闭环**：上线前不能只看 demo，要用固定案例集测工具调用、结果质量和安全拒答。
+
+## 后续可补
+
+- **Agent Runtime 安全**：sandbox、权限模型、网络访问、文件访问、命令执行。
+- **Agent 观测**：trace/span、成本统计、失败归类、线上 replay。
+- **多 Agent 编排**：什么时候拆 agent，什么时候只用一个 agent 加工具。
+- **生产部署**：队列、并发、幂等、限流、取消任务、任务恢复。
+
+## 参考
+
+- [OpenAI Agents SDK](https://platform.openai.com/docs/guides/agents-sdk/)
+- [OpenAI Agents SDK Tracing](https://openai.github.io/openai-agents-python/tracing/)
+- [LangGraph Overview](https://docs.langchain.com/oss/python/langgraph)
+- [LangGraph Durable Execution](https://docs.langchain.com/oss/python/langgraph/durable-execution)
+- [MCP Transports](https://modelcontextprotocol.io/docs/concepts/transports)
+- [Agent2Agent Protocol Specification](https://google-a2a.github.io/A2A/specification/)
+- [CrewAI Documentation](https://docs.crewai.com/)
+- [Microsoft Agent Framework](https://learn.microsoft.com/en-us/agent-framework/overview/)

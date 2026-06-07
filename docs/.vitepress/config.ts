@@ -97,7 +97,65 @@ export default defineConfig({
         {
           text: 'Agents',
           items: [
-            createDocItem('notes/agents/index.md', '/notes/agents/', '专题首页'),
+            createDocItem('notes/agents/index.md', '/notes/agents/', '专题首页')
+          ]
+        },
+        {
+          text: 'Agent 地基',
+          collapsed: true,
+          items: [
+            createDocItem(
+              'notes/agents/agent-main-loop.md',
+              '/notes/agents/agent-main-loop',
+              'Agent 主循环'
+            ),
+            createDocItem(
+              'notes/agents/tool-calling-protocol.md',
+              '/notes/agents/tool-calling-protocol',
+              '工具调用协议'
+            ),
+            createDocItem(
+              'notes/agents/context-memory.md',
+              '/notes/agents/context-memory',
+              '上下文与记忆'
+            ),
+            createDocItem(
+              'notes/agents/mcp-practice.md',
+              '/notes/agents/mcp-practice',
+              'MCP 实战'
+            )
+          ]
+        },
+        {
+          text: '编排与协作',
+          collapsed: true,
+          items: [
+            createDocItem(
+              'notes/agents/langgraph-workflow.md',
+              '/notes/agents/langgraph-workflow',
+              'LangGraph 工作流'
+            ),
+            createDocItem(
+              'notes/agents/human-in-the-loop.md',
+              '/notes/agents/human-in-the-loop',
+              'Human-in-the-loop'
+            ),
+            createDocItem(
+              'notes/agents/agent-evaluation.md',
+              '/notes/agents/agent-evaluation',
+              'Agent 评测'
+            ),
+            createDocItem(
+              'notes/agents/a2a-protocol.md',
+              '/notes/agents/a2a-protocol',
+              'A2A 协议'
+            )
+          ]
+        },
+        {
+          text: '协议参考',
+          collapsed: true,
+          items: [
             createDocItem(
               'notes/agents/tooling-template.md',
               '/notes/agents/tooling-template',
@@ -112,61 +170,6 @@ export default defineConfig({
               'notes/agents/mcp-protocol.md',
               '/notes/agents/mcp-protocol',
               'MCP 协议'
-            )
-          ]
-        },
-        {
-          text: 'Claude 源码解析',
-          items: [
-            createDocItem(
-              'notes/agents/claude-code-analysis/index.md',
-              '/notes/agents/claude-code-analysis/',
-              '专题说明'
-            ),
-            createDocItem(
-              'notes/agents/claude-code-analysis/first-look.md',
-              '/notes/agents/claude-code-analysis/first-look',
-              '01 Claude Code 泄露事件与架构启示'
-            ),
-            createDocItem(
-              'notes/agents/claude-code-analysis/query-engine-main-loop.md',
-              '/notes/agents/claude-code-analysis/query-engine-main-loop',
-              '02 QueryEngine 主循环'
-            ),
-            createDocItem(
-              'notes/agents/claude-code-analysis/context-system.md',
-              '/notes/agents/claude-code-analysis/context-system',
-              '03 上下文系统'
-            ),
-            createDocItem(
-              'notes/agents/claude-code-analysis/permission-system.md',
-              '/notes/agents/claude-code-analysis/permission-system',
-              '04 权限系统'
-            ),
-            createDocItem(
-              'notes/agents/claude-code-analysis/coordinator-and-workers.md',
-              '/notes/agents/claude-code-analysis/coordinator-and-workers',
-              '05 多 worker 编排'
-            ),
-            createDocItem(
-              'notes/agents/claude-code-analysis/platformization.md',
-              '/notes/agents/claude-code-analysis/platformization',
-              '06 平台化'
-            ),
-            createDocItem(
-              'notes/agents/claude-code-analysis/agent-runtime-os.md',
-              '/notes/agents/claude-code-analysis/agent-runtime-os',
-              '07 Agent Runtime 总结'
-            ),
-            createDocItem(
-              'notes/agents/claude-code-analysis/compaction-mechanics.md',
-              '/notes/agents/claude-code-analysis/compaction-mechanics',
-              '08 上下文压缩机制'
-            ),
-            createDocItem(
-              'notes/agents/claude-code-analysis/tool-system.md',
-              '/notes/agents/claude-code-analysis/tool-system',
-              '09 工具系统'
             )
           ]
         }
