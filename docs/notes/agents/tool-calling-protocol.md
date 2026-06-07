@@ -100,6 +100,222 @@ Useful tool.
 
 不要只靠工具名关联，因为同一轮可能并行调用多个同名工具。
 
+## Function Calling 底层流程
+
+Function Calling 不是模型直接执行函数。
+
+模型不会访问你的数据库、文件系统或 HTTP API。
+
+它只是在响应里生成一个结构化的“工具调用请求”。
+
+真正执行在应用代码里。
+
+完整流程：
+
+```text
+1. 应用把用户问题和 tools 定义发给模型。
+2. 模型判断是否需要工具。
+3. 如果需要，模型返回 tool_call。
+4. 应用解析 tool_call。
+5. 应用校验工具名、参数、权限和风险。
+6. 应用执行真实函数 / API / MCP tool。
+7. 应用把 tool result 作为新消息回填给模型。
+8. 模型基于 tool result 生成最终回答，或继续请求工具。
+```
+
+关键边界：
+
+```text
+模型负责选择工具和生成参数。
+应用负责校验、执行、授权、超时、审计和回填。
+```
+
+### 模型到底输出什么
+
+抽象结构类似：
+
+```json
+{
+  "type": "tool_call",
+  "id": "call_01",
+  "name": "get_order",
+  "arguments": {
+    "orderNo": "O10086"
+  }
+}
+```
+
+这不是函数执行结果。
+
+这只是模型说：
+
+```text
+我需要调用 get_order，参数是 orderNo=O10086。
+```
+
+### 应用怎么处理
+
+应用层要做分发：
+
+```python
+def handle_tool_call(tool_call):
+    name = tool_call["name"]
+    arguments = tool_call["arguments"]
+
+    tool = tool_registry.get(name)
+    if tool is None:
+        return tool_error(tool_call["id"], "UNKNOWN_TOOL", "工具不存在")
+
+    validated_args = validate_json_schema(tool.input_schema, arguments)
+    check_permission(tool, validated_args)
+    check_risk_and_approval(tool, validated_args)
+
+    try:
+        result = tool.execute(validated_args)
+        return tool_success(tool_call["id"], result)
+    except Exception as error:
+        return tool_error(tool_call["id"], "TOOL_EXECUTION_ERROR", str(error))
+```
+
+模型给的参数不能直接信。
+
+必须按 JSON Schema 校验。
+
+高风险工具还要做人工审批。
+
+### 为什么要二次请求模型
+
+工具结果不是自动进入模型脑子里。
+
+应用必须把工具结果回填：
+
+```json
+{
+  "type": "tool_result",
+  "toolCallId": "call_01",
+  "content": {
+    "orderNo": "O10086",
+    "status": "PAID"
+  }
+}
+```
+
+然后再次请求模型。
+
+模型看到工具结果后，才能回答：
+
+```text
+订单 O10086 当前状态是已支付。
+```
+
+如果工具结果不回填，模型只能猜。
+
+### 多工具调用
+
+一次模型响应可能有多个 tool call：
+
+```text
+get_user(userId)
+get_order(orderNo)
+get_refund_policy(orderType)
+```
+
+应用可以：
+
+- 串行执行。
+- 并行执行。
+- 按依赖关系执行。
+- 对高风险工具暂停审批。
+
+注意：
+
+```text
+工具 A 的结果如果是工具 B 的参数，就不能盲目并行。
+```
+
+### 工具调用循环
+
+Function Calling 通常是循环：
+
+```text
+model -> tool_call -> app executes -> tool_result -> model
+```
+
+直到：
+
+- 模型输出最终文本。
+- 达到最大轮数。
+- 工具失败。
+- 用户取消。
+- 风险审批拒绝。
+
+伪代码：
+
+```python
+for step in range(max_tool_rounds):
+    response = call_model(messages, tools)
+
+    if not response.tool_calls:
+        return response.final_text
+
+    for tool_call in response.tool_calls:
+        tool_result = handle_tool_call(tool_call)
+        messages.append(tool_result)
+
+raise RuntimeError("超过最大工具调用轮数")
+```
+
+必须设置最大轮数。
+
+否则模型可能陷入反复查工具的循环。
+
+### Structured Outputs
+
+如果工具定义启用严格 schema，模型生成的参数会更贴近 JSON Schema。
+
+但这不等于可以跳过校验。
+
+原因：
+
+- schema 只能约束形状，不懂业务权限。
+- schema 不能判断用户是否有权操作。
+- schema 不能判断删除、支付、发消息是否需要审批。
+- schema 不能替你处理超时和重试。
+
+所以：
+
+```text
+strict schema 是第一层。
+应用校验和权限控制是第二层。
+人工审批是高风险动作的第三层。
+```
+
+### Function Calling 和 MCP
+
+Function Calling 是模型侧工具调用机制。
+
+MCP 是工具服务协议。
+
+它们可以串起来：
+
+```text
+模型输出 tool_call
+  -> Host 找到这个工具来自 MCP Server
+  -> Host 发送 MCP tools/call
+  -> MCP Server 执行
+  -> Host 把结果包装成 tool_result
+  -> 回填给模型
+```
+
+不要把 MCP Server 暴露的工具结果原样塞给模型。
+
+仍然要做：
+
+- 输出长度限制。
+- 敏感字段脱敏。
+- 错误结构化。
+- 来源和可信度标记。
+
 ## 参数校验
 
 执行前必须校验：
@@ -374,5 +590,6 @@ on agent_tool_execution (idempotency_key);
 
 ## 参考
 
+- [OpenAI Function Calling](https://platform.openai.com/docs/guides/function-calling)
 - [OpenAI Agents SDK Tools](https://openai.github.io/openai-agents-python/agents/)
 - [OpenAI Agents SDK Tracing](https://openai.github.io/openai-agents-python/tracing/)

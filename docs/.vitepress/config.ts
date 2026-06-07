@@ -101,6 +101,27 @@ export default defineConfig({
           ]
         },
         {
+          text: 'AI 协作',
+          collapsed: true,
+          items: [
+            createDocItem(
+              'notes/agents/product-spec-prompt.md',
+              '/notes/agents/product-spec-prompt',
+              '产品规范提示词'
+            ),
+            createDocItem(
+              'notes/agents/spec-driven-development.md',
+              '/notes/agents/spec-driven-development',
+              'SDD 规范驱动开发'
+            ),
+            createDocItem(
+              'notes/agents/harness-engineering.md',
+              '/notes/agents/harness-engineering',
+              'Harness Engineering'
+            )
+          ]
+        },
+        {
           text: 'Agent 地基',
           collapsed: true,
           items: [
@@ -115,9 +136,34 @@ export default defineConfig({
               '工具调用协议'
             ),
             createDocItem(
+              'notes/agents/react-agent-runtime-control.md',
+              '/notes/agents/react-agent-runtime-control',
+              'ReAct 与运行控制'
+            ),
+            createDocItem(
               'notes/agents/context-memory.md',
               '/notes/agents/context-memory',
               '上下文与记忆'
+            ),
+            createDocItem(
+              'notes/agents/rag-vector-retrieval-basics.md',
+              '/notes/agents/rag-vector-retrieval-basics',
+              'RAG 向量检索'
+            ),
+            createDocItem(
+              'notes/agents/rag-chunking-strategy.md',
+              '/notes/agents/rag-chunking-strategy',
+              'RAG 长文档切片'
+            ),
+            createDocItem(
+              'notes/agents/rag-rerank-cross-encoder.md',
+              '/notes/agents/rag-rerank-cross-encoder',
+              'RAG Rerank'
+            ),
+            createDocItem(
+              'notes/agents/rag-evaluation-metrics.md',
+              '/notes/agents/rag-evaluation-metrics',
+              'RAG 系统评测'
             ),
             createDocItem(
               'notes/agents/mcp-practice.md',
@@ -134,6 +180,11 @@ export default defineConfig({
               'notes/agents/langgraph-workflow.md',
               '/notes/agents/langgraph-workflow',
               'LangGraph 工作流'
+            ),
+            createDocItem(
+              'notes/agents/multi-agent-collaboration.md',
+              '/notes/agents/multi-agent-collaboration',
+              '多 Agent 协作'
             ),
             createDocItem(
               'notes/agents/human-in-the-loop.md',
@@ -170,6 +221,11 @@ export default defineConfig({
               'notes/agents/mcp-protocol.md',
               '/notes/agents/mcp-protocol',
               'MCP 协议'
+            ),
+            createDocItem(
+              'notes/agents/mcp-vs-skills.md',
+              '/notes/agents/mcp-vs-skills',
+              'MCP vs Skills'
             )
           ]
         }
@@ -324,6 +380,11 @@ export default defineConfig({
               'notes/java-backend/transaction-outbox-side-effects.md',
               '/notes/java-backend/transaction-outbox-side-effects',
               '事务与外部副作用'
+            ),
+            createDocItem(
+              'notes/java-backend/transfer-order-consistency-case.md',
+              '/notes/java-backend/transfer-order-consistency-case',
+              '转账与订单一致性'
             )
           ]
         },
@@ -402,19 +463,29 @@ export default defineConfig({
               '03 索引与 EXPLAIN'
             ),
             createDocItem(
+              'notes/mysql/index-principles-covering.md',
+              '/notes/mysql/index-principles-covering',
+              '04 索引原理与回表'
+            ),
+            createDocItem(
+              'notes/mysql/transaction-isolation-mvcc.md',
+              '/notes/mysql/transaction-isolation-mvcc',
+              '05 事务隔离与 MVCC'
+            ),
+            createDocItem(
               'notes/mysql/transactions-locks.md',
               '/notes/mysql/transactions-locks',
-              '04 事务与锁'
+              '06 事务与锁'
             ),
             createDocItem(
               'notes/mysql/slow-query-troubleshooting.md',
               '/notes/mysql/slow-query-troubleshooting',
-              '05 慢 SQL 排查'
+              '07 慢 SQL 排查'
             ),
             createDocItem(
               'notes/mysql/mysql-java-backend.md',
               '/notes/mysql/mysql-java-backend',
-              '06 Java 后端接入'
+              '08 Java 后端接入'
             )
           ]
         }
@@ -461,14 +532,19 @@ export default defineConfig({
               '05 分布式锁'
             ),
             createDocItem(
+              'notes/redis/distributed-lock-failover.md',
+              '/notes/redis/distributed-lock-failover',
+              '06 分布式锁故障'
+            ),
+            createDocItem(
               'notes/redis/redisson.md',
               '/notes/redis/redisson',
-              '06 Redisson'
+              '07 Redisson'
             ),
             createDocItem(
               'notes/redis/redis-template-json.md',
               '/notes/redis/redis-template-json',
-              '07 RedisTemplate 配置'
+              '08 RedisTemplate 配置'
             )
           ]
         }

@@ -17,8 +17,9 @@ sidebarTitle: 专题首页
 | 03 | [Redis 缓存异常治理](/notes/redis/cache-problems) | 穿透、击穿、雪崩、大 key、热点 key 怎么处理 |
 | 04 | [Redis 与 MySQL 缓存一致性](/notes/redis/cache-consistency) | 写库、删缓存、事务提交后删除、失败重试怎么设计 |
 | 05 | [Redis 分布式锁](/notes/redis/distributed-lock) | `SET NX PX`、唯一值、Lua 释放、锁失效场景 |
-| 06 | [Redisson 使用笔记](/notes/redis/redisson) | Spring Boot 里怎么用 `RLock`，看门狗和租约怎么理解 |
-| 07 | [RedisTemplate JSON 序列化配置](/notes/redis/redis-template-json) | key/value 序列化、Spring Data Redis 4 迁移问题 |
+| 06 | [Redis 分布式锁故障场景](/notes/redis/distributed-lock-failover) | 主节点宕机、锁复制丢失、Redlock、fencing token、数据库兜底 |
+| 07 | [Redisson 使用笔记](/notes/redis/redisson) | Spring Boot 里怎么用 `RLock`，看门狗和租约怎么理解 |
+| 08 | [RedisTemplate JSON 序列化配置](/notes/redis/redis-template-json) | key/value 序列化、Spring Data Redis 4 迁移问题 |
 
 ## 先定边界
 

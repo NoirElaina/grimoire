@@ -43,6 +43,7 @@ sidebarTitle: 专题首页
 - [Spring 事务传播行为](/notes/java-backend/transaction-propagation)
 - [Spring 事务失效场景](/notes/java-backend/transaction-failure-scenarios)
 - [本地事务与外部副作用](/notes/java-backend/transaction-outbox-side-effects)
+- [转账与订单一致性案例](/notes/java-backend/transfer-order-consistency-case)
 
 ## 项目案例
 

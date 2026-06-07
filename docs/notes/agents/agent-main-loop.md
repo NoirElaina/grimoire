@@ -147,7 +147,7 @@ async function runAgent(input: UserInput): Promise<AgentResult> {
 不要让模型输出一段自然语言：
 
 ```text
-我准备调用 search_docs("xxx")
+我准备调用 search_docs("MCP Streamable HTTP")
 ```
 
 然后你用正则猜它要干什么。工具调用必须结构化。

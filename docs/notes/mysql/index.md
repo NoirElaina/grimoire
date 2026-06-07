@@ -13,9 +13,11 @@ sidebarTitle: 专题首页
 2. [MySQL 入门与基础模型](/notes/mysql/mysql-basics)
 3. [MySQL 表设计规范](/notes/mysql/table-design)
 4. [MySQL 索引与 EXPLAIN](/notes/mysql/indexes-explain)
-5. [MySQL 事务与锁](/notes/mysql/transactions-locks)
-6. [MySQL 慢 SQL 排查](/notes/mysql/slow-query-troubleshooting)
-7. [MySQL 与 Java 后端](/notes/mysql/mysql-java-backend)
+5. [MySQL 索引原理与回表](/notes/mysql/index-principles-covering)
+6. [MySQL 事务隔离与 MVCC](/notes/mysql/transaction-isolation-mvcc)
+7. [MySQL 事务与锁](/notes/mysql/transactions-locks)
+8. [MySQL 慢 SQL 排查](/notes/mysql/slow-query-troubleshooting)
+9. [MySQL 与 Java 后端](/notes/mysql/mysql-java-backend)
 
 ## 先定边界
 
