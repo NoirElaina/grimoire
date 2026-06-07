@@ -1,6 +1,6 @@
 ---
 title: Redis 基础使用与缓存设计
-sidebarTitle: 01 缓存设计
+sidebarTitle: 00 缓存设计总览
 ---
 
 # Redis 基础使用与缓存设计
@@ -355,13 +355,18 @@ public class CacheService {
 
 ```java
 @Bean
-public RedisTemplate<String, Object> redisTemplate(RedisConnectionFactory connectionFactory) {
+public RedisTemplate<String, Object> redisTemplate(RedisConnectionFactory connectionFactory,
+                                                   ObjectMapper objectMapper) {
+    RedisSerializer<String> stringSerializer = new StringRedisSerializer();
+    GenericJacksonJsonRedisSerializer jsonSerializer =
+        new GenericJacksonJsonRedisSerializer(objectMapper);
+
     RedisTemplate<String, Object> template = new RedisTemplate<>();
     template.setConnectionFactory(connectionFactory);
-    template.setKeySerializer(new StringRedisSerializer());
-    template.setHashKeySerializer(new StringRedisSerializer());
-    template.setValueSerializer(new GenericJackson2JsonRedisSerializer());
-    template.setHashValueSerializer(new GenericJackson2JsonRedisSerializer());
+    template.setKeySerializer(stringSerializer);
+    template.setHashKeySerializer(stringSerializer);
+    template.setValueSerializer(jsonSerializer);
+    template.setHashValueSerializer(jsonSerializer);
     template.afterPropertiesSet();
     return template;
 }

@@ -349,12 +349,42 @@ export default defineConfig({
             createDocItem(
               'notes/redis/cache-design.md',
               '/notes/redis/cache-design',
-              '01 缓存设计'
+              '00 缓存设计总览'
+            ),
+            createDocItem(
+              'notes/redis/redis-basics.md',
+              '/notes/redis/redis-basics',
+              '01 基础模型'
+            ),
+            createDocItem(
+              'notes/redis/data-structures.md',
+              '/notes/redis/data-structures',
+              '02 数据结构'
+            ),
+            createDocItem(
+              'notes/redis/cache-problems.md',
+              '/notes/redis/cache-problems',
+              '03 缓存异常治理'
+            ),
+            createDocItem(
+              'notes/redis/cache-consistency.md',
+              '/notes/redis/cache-consistency',
+              '04 缓存一致性'
+            ),
+            createDocItem(
+              'notes/redis/distributed-lock.md',
+              '/notes/redis/distributed-lock',
+              '05 分布式锁'
+            ),
+            createDocItem(
+              'notes/redis/redisson.md',
+              '/notes/redis/redisson',
+              '06 Redisson'
             ),
             createDocItem(
               'notes/redis/redis-template-json.md',
               '/notes/redis/redis-template-json',
-              '02 RedisTemplate 配置'
+              '07 RedisTemplate 配置'
             )
           ]
         }
