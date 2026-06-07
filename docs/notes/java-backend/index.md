@@ -11,9 +11,16 @@ sidebarTitle: 专题首页
 
 - [Java Stream 使用笔记](/notes/java-backend/java-stream)
 
+## Spring 地基
+
+- [Spring IoC 与依赖注入](/notes/java-backend/spring-ioc-di)
+- [Spring MVC 请求链路](/notes/java-backend/spring-mvc-request-flow)
+- [Spring Boot 配置文件与 Profile](/notes/java-backend/config-profiles)
+
 ## 基础工程
 
 - [Spring Boot 项目骨架](/notes/java-backend/spring-boot-template)
+- [Java 后端分层与 DTO](/notes/java-backend/layering-dto)
 - [接口设计](/notes/java-backend/api-design-template)
 - [过滤器与拦截器](/notes/java-backend/filter-interceptor)
 - [问题排查](/notes/java-backend/troubleshooting-template)
@@ -30,8 +37,10 @@ sidebarTitle: 专题首页
 
 后面这组可以继续补：事务传播行为、事务失效场景、本地事务与外部副作用、事务和 MQ 最终一致性。
 
-## 业务场景
+## 项目案例
 
+- [商品详情查询与缓存案例](/notes/java-backend/product-detail-cache-case)
+- [用户登录鉴权案例](/notes/java-backend/user-login-auth-case)
 - [订单支付超时关闭](/notes/java-backend/order-timeout-close)
 
 ## 微服务组件
@@ -42,6 +51,9 @@ sidebarTitle: 专题首页
 
 ## 后面可以继续补
 
+- Java 集合与并发基础
+- Maven / Gradle 依赖管理
+- Bean Validation 深入
 - MyBatis / JPA 使用规范
 - MQ 与事件驱动模板
 - 支付系统设计

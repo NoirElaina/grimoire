@@ -196,6 +196,27 @@ export default defineConfig({
           ]
         },
         {
+          text: 'Spring 地基',
+          collapsed: true,
+          items: [
+            createDocItem(
+              'notes/java-backend/spring-ioc-di.md',
+              '/notes/java-backend/spring-ioc-di',
+              'Spring IoC / DI'
+            ),
+            createDocItem(
+              'notes/java-backend/spring-mvc-request-flow.md',
+              '/notes/java-backend/spring-mvc-request-flow',
+              'Spring MVC 请求链路'
+            ),
+            createDocItem(
+              'notes/java-backend/config-profiles.md',
+              '/notes/java-backend/config-profiles',
+              '配置与 Profile'
+            )
+          ]
+        },
+        {
           text: '基础工程',
           collapsed: true,
           items: [
@@ -203,6 +224,11 @@ export default defineConfig({
               'notes/java-backend/spring-boot-template.md',
               '/notes/java-backend/spring-boot-template',
               'Spring Boot 项目模板'
+            ),
+            createDocItem(
+              'notes/java-backend/layering-dto.md',
+              '/notes/java-backend/layering-dto',
+              '分层与 DTO'
             ),
             createDocItem(
               'notes/java-backend/api-design-template.md',
@@ -254,9 +280,19 @@ export default defineConfig({
           ]
         },
         {
-          text: '业务场景',
+          text: '项目案例',
           collapsed: true,
           items: [
+            createDocItem(
+              'notes/java-backend/product-detail-cache-case.md',
+              '/notes/java-backend/product-detail-cache-case',
+              '商品详情缓存案例'
+            ),
+            createDocItem(
+              'notes/java-backend/user-login-auth-case.md',
+              '/notes/java-backend/user-login-auth-case',
+              '登录鉴权案例'
+            ),
             createDocItem(
               'notes/java-backend/order-timeout-close.md',
               '/notes/java-backend/order-timeout-close',
