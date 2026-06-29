@@ -294,6 +294,11 @@ export default defineConfig({
               'Spring IoC / DI'
             ),
             createDocItem(
+              'notes/java-backend/spring-bean-lifecycle.md',
+              '/notes/java-backend/spring-bean-lifecycle',
+              'Bean 生命周期与循环依赖'
+            ),
+            createDocItem(
               'notes/java-backend/spring-mvc-request-flow.md',
               '/notes/java-backend/spring-mvc-request-flow',
               'Spring MVC 请求链路'
