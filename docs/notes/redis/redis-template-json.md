@@ -493,10 +493,6 @@ public class UserCache {
 - [ ] 业务代码不要散落硬编码 key，统一封装 key 生成。
 - [ ] 所有缓存写入都明确 TTL。
 
-## 最后记一句话
-
-这段配置不是“让 Redis 能用”，而是把 Redis 的数据格式从 Java 二进制改成可读、可排查、可统一治理的 JSON。
-
 ## 参考
 
 - [Spring Data Redis RedisTemplate](https://docs.spring.io/spring-data/redis/reference/redis/template.html)

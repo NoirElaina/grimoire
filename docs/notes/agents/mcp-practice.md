@@ -7,28 +7,6 @@ sidebarTitle: MCP 实战
 
 > MCP 的价值不是“又多一种插件格式”，而是把 Agent 访问外部工具、资源和提示词的方式协议化。
 
-## 先给结论
-
-MCP 可以理解为：
-
-```text
-Agent Client
-  -> MCP Transport
-  -> MCP Server
-  -> Tools / Resources / Prompts
-  -> 外部系统
-```
-
-常用传输：
-
-| 传输 | 场景 |
-| --- | --- |
-| `stdio` | 本地工具，客户端启动子进程 |
-| `Streamable HTTP` | 远程服务，多客户端连接 |
-| HTTP + SSE | 旧版本兼容，不建议新项目优先选 |
-
-当前标准传输是 `stdio` 和 `Streamable HTTP`。`Streamable HTTP` 替代了旧的 HTTP+SSE 方案。
-
 ## MCP 里有什么
 
 | 能力 | 含义 | 例子 |

@@ -7,26 +7,6 @@ sidebarTitle: 配置与 Profile
 
 > 配置管理不是把所有东西塞进 `application.yml`。工程上重点是环境隔离、敏感信息、默认值、可验证；原理上要懂配置怎么被加载成 `Environment`、优先级为什么是那样、`@Profile` 和 `@ConfigurationProperties` 怎么生效。
 
-## 先给结论
-
-后端项目先按这个结构：
-
-```text
-application.yml
-application-local.yml
-application-dev.yml
-application-prod.yml
-```
-
-规则：
-
-- 公共配置放 `application.yml`。
-- 本地配置放 `application-local.yml`。
-- 测试环境放 `application-dev.yml`。
-- 生产配置放 `application-prod.yml`。
-- 密码、密钥、token 不提交到 Git。
-- 生产配置优先由环境变量、配置中心或部署平台注入。
-
 ## 基础写法
 
 `application.yml`：

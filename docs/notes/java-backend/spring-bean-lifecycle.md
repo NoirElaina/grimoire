@@ -7,29 +7,6 @@ sidebarTitle: Bean 生命周期与循环依赖
 
 > 这块是 Spring 源码题的高频区。面试官真正想确认的是：你知不知道 Bean 从 BeanDefinition 到可用对象中间发生了什么，以及三级缓存到底解决了什么、解决不了什么。
 
-## 先给结论
-
-单例 Bean 的创建链路（去掉细枝末节）：
-
-```text
-扫描 / 解析 -> BeanDefinition
-  -> getBean(name)
-  -> 一级缓存有就直接返回
-  -> 没有则 createBean
-    -> 实例化（构造器，拿到原始对象）
-    -> 提前暴露：把 ObjectFactory 放进三级缓存
-    -> 属性填充（依赖注入，触发其它 Bean 创建）
-    -> 初始化（Aware -> 前置处理 -> initMethod -> 后置处理，AOP 代理通常在这里）
-    -> 放进一级缓存，清理二三级缓存
-  -> 返回
-```
-
-记住三句话：
-
-- 三级缓存解决的是**单例 + 属性注入（setter / field）**的循环依赖。
-- **构造器注入**的循环依赖解决不了，启动直接报错。
-- 三级缓存存的不是对象，是 `ObjectFactory`，目的是**把"要不要生成代理"这件事延迟到真正需要的时候再决定**。
-
 ## Bean 生命周期的关键阶段
 
 把 `AbstractAutowireCapableBeanFactory.doCreateBean` 拆开看，核心就四步：
@@ -155,7 +132,7 @@ protected Object getEarlyBeanReference(String beanName, RootBeanDefinition mbd, 
 - **没有循环依赖时**：三级缓存里的工厂根本不会被调用，代理照常在初始化最后一步生成，时机不变。
 - **有循环依赖时**：工厂被调用，`AbstractAutoProxyCreator` 提前生成代理并记录到 `earlyProxyReferences`，保证提前暴露的和最终的是**同一个代理**，且后面初始化结束时不会重复代理。
 
-一句话总结：**三级缓存用 `ObjectFactory` 把"是否提前生成代理"延迟决策，既不破坏 AOP 的正常时机，又能在真正发生循环依赖时给出一致的代理引用。** 两级缓存做不到这种"按需提前代理"。
+换句话说，三级缓存用 `ObjectFactory` 把"是否提前生成代理"延迟决策，既不破坏 AOP 的正常时机，又能在真正发生循环依赖时给出一致的代理引用。两级缓存做不到这种"按需提前代理"。
 
 ## 解决不了的情况
 

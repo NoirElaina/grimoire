@@ -7,18 +7,6 @@ sidebarTitle: MyBatis-Plus
 
 > 这篇只记工程里怎么接、怎么写、哪里容易翻车。
 
-## 先给结论
-
-MyBatis-Plus 适合解决 **单表 CRUD、条件拼接、分页、逻辑删除、自动填充、乐观锁** 这些重复活。
-
-不要把它当成“所有 SQL 都不用写”的工具：
-
-- 简单单表：优先用 `BaseMapper`、`LambdaQueryWrapper`。
-- 有业务语义：写在 `Service`，不要把规则塞进 `Controller`。
-- 多表统计、复杂报表、强约束查询：回到 XML / 注解 SQL。
-- 写操作：先确认条件，再执行 `update` / `remove`，不要裸跑。
-- Entity 只对应表，不要直接当请求 DTO 和返回 VO。
-
 ## 依赖怎么选
 
 Spring Boot 3 用这个：

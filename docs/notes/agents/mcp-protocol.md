@@ -18,21 +18,6 @@ Host / Agent Runtime
 
 这篇只记实现重点：消息怎么走、传输怎么选、`stdio`、`SSE`、`Streamable HTTP` 到底差在哪，以及 Host 需要补哪些内部逻辑。
 
-## 先给结论
-
-做 MCP 集成时，先记住这几件事：
-
-1. MCP 消息层是 `JSON-RPC 2.0`，不是聊天消息格式。
-2. 官方标准传输主要是 `stdio` 和 `Streamable HTTP`。
-3. 老版本 `HTTP + SSE` 是 legacy transport，新实现优先用 `Streamable HTTP`。
-4. `stdio` 适合本地子进程，`Streamable HTTP` 适合远程服务。
-5. SSE 在最新 `Streamable HTTP` 里仍会出现，但它是 HTTP 响应里的流式承载方式，不等于旧的双端点 `HTTP + SSE`。
-6. MCP 只定义协议、生命周期和能力原语，不替你实现 Agent Loop、权限系统、工具确认和上下文裁剪。
-
-一句话：
-
-**MCP 是 Agent Host 和外部能力 Server 之间的标准 RPC 会话，不是模型自己直接联网调工具。**
-
 ## 角色关系
 
 MCP 里有 3 个角色：
@@ -958,9 +943,3 @@ MCP 协议提供连接方式，不自动提供权限模型。
 - [MCP Lifecycle 2025-11-25](https://modelcontextprotocol.io/specification/2025-11-25/basic/lifecycle)
 - [MCP Tools 2025-11-25](https://modelcontextprotocol.io/specification/2025-11-25/server/tools)
 - [MCP Transports 2024-11-05](https://modelcontextprotocol.io/specification/2024-11-05/basic/transports)
-
-## 最后记一句话
-
-MCP 的关键不是“多了几个工具”，而是：
-
-**Host 用统一的 JSON-RPC 会话，把本地子进程、远程 HTTP 服务、工具、资源、Prompt 和模型工具调用连接到同一套可控执行平面里。**

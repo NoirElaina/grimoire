@@ -7,25 +7,6 @@ sidebarTitle: 统一异常与错误码
 
 > 后端接口不能靠一堆 `RuntimeException("失败了")` 过日子。错误码要让前端能处理、日志能定位、排查能闭环。
 
-## 先给结论
-
-推荐结构：
-
-```text
-ApiResult：统一响应
-ErrorCode：稳定错误码枚举
-BizException：业务异常
-GlobalExceptionHandler：全局异常处理
-traceId：把响应和日志串起来
-```
-
-接口错误返回要满足：
-
-- 前端能判断是哪类错误。
-- 用户能看到友好提示。
-- 后端日志能定位真实原因。
-- 不把堆栈、SQL、密钥返回给前端。
-
 ## 统一响应结构
 
 ```java

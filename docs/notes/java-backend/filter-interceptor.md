@@ -128,7 +128,7 @@ Filter
 
 所以想拿方法入参/返回值做事用 AOP；想结合 HTTP 上下文和 Controller 方法用 Interceptor；想处理最原始的 HTTP 请求用 Filter。
 
-## 选型结论
+## 怎么选
 
 | 需求 | 用什么 |
 | --- | --- |
@@ -139,7 +139,7 @@ Filter
 | Controller 异常统一处理 | `@RestControllerAdvice` |
 | 方法级权限、事务、方法日志 | Spring AOP / `@PreAuthorize` |
 
-一句话：越靠近 HTTP 原始请求用 `Filter`，越靠近 Controller 业务语义用 `Interceptor`，要操作方法入参/返回值用 `AOP`；**鉴权不要自己随便写 Interceptor，优先接 Spring Security**。
+总的来说，越靠近 HTTP 原始请求用 `Filter`，越靠近 Controller 业务语义用 `Interceptor`，要操作方法入参/返回值用 `AOP`；**鉴权不要自己随便写 Interceptor，优先接 Spring Security**。
 
 ## Filter 示例：traceId
 

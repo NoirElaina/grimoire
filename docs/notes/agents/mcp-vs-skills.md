@@ -7,11 +7,11 @@ sidebarTitle: MCP vs Skills
 
 MCP 和 Skills 经常被放在一起讨论，但它们解决的问题不一样。
 
-一句话：
+简单来说：
 
 ```text
-MCP 解决“Agent 怎么连接外部工具和数据源”。
-Skills 解决“Agent 遇到某类任务时应该按什么方法做”。
+MCP 解决"Agent 怎么连接外部工具和数据源"。
+Skills 解决"Agent 遇到某类任务时应该按什么方法做"。
 ```
 
 MCP 是协议层。

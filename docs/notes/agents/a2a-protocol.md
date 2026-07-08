@@ -7,29 +7,6 @@ sidebarTitle: A2A 协议
 
 > A2A 解决的是“一个 Agent 怎么发现、调用、协作另一个独立 Agent”。它不是工具协议，也不是 MCP 的替代品。
 
-## 先给结论
-
-区别先记住：
-
-| 协议 | 解决什么 |
-| --- | --- |
-| MCP | Agent 调工具、资源、提示词 |
-| A2A | Agent 和另一个 Agent 通信 |
-
-MCP 更像：
-
-```text
-Agent -> Tool Server
-```
-
-A2A 更像：
-
-```text
-Agent Client -> Remote Agent Server
-```
-
-远程 Agent 可以有自己的模型、工具、记忆、权限和工作流。
-
 ## A2A 核心对象
 
 | 对象 | 含义 |

@@ -7,31 +7,6 @@ sidebarTitle: 安装与 Spring 集成
 
 > 这一篇按工程落地流程写：先把 RabbitMQ 跑起来，再让 Spring Boot 能声明拓扑、发送消息、消费消息、处理失败。
 
-## 先给结论
-
-最小可用流程：
-
-```text
-1. Docker Compose 启动 RabbitMQ management 镜像
-2. 创建 vhost、用户、权限
-3. Spring Boot 配连接信息
-4. 声明 exchange、queue、binding、DLQ
-5. 配 JSON 消息转换器
-6. RabbitTemplate 发送消息，带 messageId
-7. @RabbitListener 消费消息，手动 ack
-8. 失败消息 nack(false)，进入 DLQ
-9. 消费端用数据库唯一约束做幂等
-```
-
-不要只做到“能发能收”。RabbitMQ 工程化至少要补：
-
-- 生产者确认。
-- 路由失败返回。
-- 消费者手动确认。
-- 死信队列。
-- 消费幂等。
-- 基础监控。
-
 ## 本地安装
 
 用 Docker Compose：
@@ -778,10 +753,6 @@ http://localhost:15672
 - [ ] 消费端有幂等。
 - [ ] DTO 不直接用 Entity。
 - [ ] 管理台不暴露公网。
-
-## 最后记一句话
-
-Spring Boot 整合 RabbitMQ 不难，真正要写清的是：消息发到哪里、失败去哪、重复怎么办、堆积怎么看。
 
 ## 参考
 

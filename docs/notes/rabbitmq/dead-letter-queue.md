@@ -7,43 +7,6 @@ sidebarTitle: 死信队列
 
 > 死信队列不是“失败垃圾桶”，而是消费失败、消息过期、队列溢出后的兜底通道。它的重点不是配置出来，而是后面怎么查、怎么重试、怎么补偿。
 
-## 先给结论
-
-死信队列这套东西由两部分组成：
-
-```text
-DLX = Dead Letter Exchange，死信交换机
-DLQ = Dead Letter Queue，死信队列
-```
-
-消息变成死信后，不是直接进某个队列，而是：
-
-```text
-原队列
-  -> 变成死信
-  -> 投递到 x-dead-letter-exchange
-  -> 使用 x-dead-letter-routing-key
-  -> 路由到 DLQ
-```
-
-最常见配置：
-
-```java
-QueueBuilder
-    .durable("flashmart.order.created.queue")
-    .deadLetterExchange("flashmart.order.dlx.exchange")
-    .deadLetterRoutingKey("order.created.failed")
-    .build();
-```
-
-消费者失败时：
-
-```java
-channel.basicNack(deliveryTag, false, false);
-```
-
-最后一个 `false` 表示不重新入队。如果原队列配置了 DLX，消息就会进入死信流程。
-
 ## 什么消息会变成死信
 
 RabbitMQ 中消息变成死信，常见有三种原因：
@@ -511,10 +474,6 @@ coupon.issue.queue  -> coupon.issue.dlq
 - [ ] 能读取 `x-death` 判断死信原因。
 - [ ] 有人工重放或补偿策略。
 - [ ] 重试队列和最终 DLQ 分清楚。
-
-## 最后记一句话
-
-死信队列不是为了“让失败消息有地方放”，而是为了让失败消息可观察、可排查、可重试、可最终处理。
 
 ## 参考
 

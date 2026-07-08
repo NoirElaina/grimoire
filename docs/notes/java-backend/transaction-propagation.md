@@ -7,26 +7,6 @@ sidebarTitle: 事务传播行为
 
 > 事务传播行为解决的是：一个 `@Transactional` 方法调用另一个 `@Transactional` 方法时，到底用同一个事务，还是开新事务，还是必须没有事务。
 
-## 先给结论
-
-最常用：
-
-| 传播行为 | 直觉理解 | 常见用途 |
-| --- | --- | --- |
-| `REQUIRED` | 有事务就加入，没有就新建 | 默认，绝大多数业务 |
-| `REQUIRES_NEW` | 暂停外层事务，自己开新事务 | 独立记录日志、outbox、失败记录 |
-| `NESTED` | 嵌套事务，依赖保存点 | 局部回滚，使用前先确认数据库和事务管理器支持 |
-| `MANDATORY` | 必须已有事务 | 强制某方法只能在事务内调用 |
-| `SUPPORTS` | 有事务就加入，没有也能跑 | 只读查询 |
-| `NOT_SUPPORTED` | 挂起事务，非事务执行 | 不想占用事务的慢操作 |
-| `NEVER` | 有事务就报错 | 禁止在事务内执行 |
-
-默认是：
-
-```java
-@Transactional(propagation = Propagation.REQUIRED)
-```
-
 ## REQUIRED
 
 默认传播行为。

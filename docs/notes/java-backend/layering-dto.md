@@ -7,24 +7,6 @@ sidebarTitle: 分层与 DTO
 
 > 分层不是为了显得“架构感很强”，而是为了让 Controller、Service、Mapper 各做各的事，避免一个接口越写越烂。
 
-## 先给结论
-
-推荐基础分层：
-
-```text
-controller：接 HTTP，请求参数，返回 VO
-service：业务流程，事务边界，调用下游
-mapper/repository：数据库访问
-domain/entity：业务对象或数据库对象
-dto/request/command：入参对象
-vo/response：出参对象
-converter：对象转换
-config：配置
-common：通用能力
-```
-
-最容易写乱的是 Service。Service 应该组织业务流程，而不是把所有 SQL、缓存、MQ、第三方接口细节都堆进去。
-
 ## 常见对象类型
 
 | 类型 | 用途 | 是否暴露给前端 |

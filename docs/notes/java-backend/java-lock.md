@@ -338,4 +338,5 @@ try {
 ## 关联笔记
 
 - [Java synchronized](/notes/java-backend/synchronized)
+- [Java 并发深度](/notes/java-backend/java-concurrency)（JMM / CAS / 并发容器的完整框架）
 - [Redis 分布式锁故障场景](/notes/redis/distributed-lock-failover)

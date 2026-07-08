@@ -188,7 +188,7 @@ ThreadLocalMap 被 Thread 强引用
 
 ThreadLocal 自己有“被动清理”机制：`get`、`set`、`remove` 过程中遇到 key 为 null 的 stale entry（`expungeStaleEntry` / `cleanSomeSlots`）会顺手清掉。但它**只清探测过程中碰到的那些**，不保证清干净。如果你 set 之后再也不碰这个 ThreadLocal，泄漏的 value 可能永远等不到被动清理。
 
-所以结论只有一句：
+所以唯一可靠的做法是：
 
 ```java
 try {

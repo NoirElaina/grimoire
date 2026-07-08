@@ -14,23 +14,6 @@ Nacos 在 Spring Cloud Alibaba 项目里通常做两件事：
 
 这篇不讲“Nacos 是什么”，只记项目里怎么落：依赖怎么引、`application.yml` 怎么写、`namespace / group / dataId` 怎么定、配置怎么刷新、服务发现怎么排查。
 
-## 先给结论
-
-普通后端项目用 Nacos，先按这套规则来：
-
-1. 注册中心和配置中心可以都用 Nacos，但配置要分开治理。
-2. `namespace` 优先用于环境隔离，例如 dev、test、prod。
-3. `group` 用于业务分组或配置分组，不要滥造。
-4. `dataId` 必须稳定命名，一眼能看出应用、环境和配置类型。
-5. Spring Cloud Alibaba 2025.x 推荐用 `spring.config.import` 导入 Nacos 配置，不要再依赖 `bootstrap.yml`。
-6. 动态刷新只适合开关、阈值、文案、限流参数，不适合数据源、端口、线程池核心结构这类配置。
-7. 注册成功不等于调用成功，调用还要经过服务发现、负载均衡、网络和下游健康状态。
-8. 生产环境不要把 Nacos 健康检查随便接到 Kubernetes liveness probe 上。
-
-一句话：
-
-**Nacos 是服务治理和配置治理的基础设施，不是“配上地址就完事”的连接器。**
-
 ## 依赖
 
 服务注册与发现：
@@ -533,12 +516,6 @@ Nacos 配置中心不是业务数据库。
 - Nacos 上显示的实例 IP 是否可达？
 - 是否需要 Actuator 端点辅助排查？
 - 是否避免把 Nacos health 直接作为 liveness probe？
-
-## 最后记一句话
-
-Nacos 落地的关键不是“服务能注册、配置能读取”，而是：
-
-**把环境隔离、配置命名、动态刷新边界、服务发现链路和排查入口都设计清楚。**
 
 ## 参考
 

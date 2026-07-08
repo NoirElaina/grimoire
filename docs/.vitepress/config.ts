@@ -244,7 +244,7 @@ export default defineConfig({
           ]
         },
         {
-          text: 'Java 基础',
+          text: 'Java 集合与流',
           collapsed: true,
           items: [
             createDocItem(
@@ -261,7 +261,13 @@ export default defineConfig({
               'notes/java-backend/hashmap-structure.md',
               '/notes/java-backend/hashmap-structure',
               'HashMap 结构'
-            ),
+            )
+          ]
+        },
+        {
+          text: 'Java 并发',
+          collapsed: true,
+          items: [
             createDocItem(
               'notes/java-backend/java-thread-pools.md',
               '/notes/java-backend/java-thread-pools',
@@ -281,6 +287,22 @@ export default defineConfig({
               'notes/java-backend/java-lock.md',
               '/notes/java-backend/java-lock',
               'Lock'
+            ),
+            createDocItem(
+              'notes/java-backend/java-concurrency.md',
+              '/notes/java-backend/java-concurrency',
+              '并发深度'
+            )
+          ]
+        },
+        {
+          text: 'Java 设计模式',
+          collapsed: true,
+          items: [
+            createDocItem(
+              'notes/java-backend/design-patterns.md',
+              '/notes/java-backend/design-patterns',
+              '设计模式'
             )
           ]
         },
@@ -292,6 +314,16 @@ export default defineConfig({
               'notes/java-backend/spring-ioc-di.md',
               '/notes/java-backend/spring-ioc-di',
               'Spring IoC / DI'
+            ),
+            createDocItem(
+              'notes/java-backend/spring-aop.md',
+              '/notes/java-backend/spring-aop',
+              'Spring AOP'
+            ),
+            createDocItem(
+              'notes/java-backend/spring-boot-autoconfig.md',
+              '/notes/java-backend/spring-boot-autoconfig',
+              'Spring Boot 自动配置'
             ),
             createDocItem(
               'notes/java-backend/spring-bean-lifecycle.md',

@@ -7,35 +7,6 @@ sidebarTitle: 延迟队列
 
 > RabbitMQ 原生没有“普通延迟队列”这个队列类型，常见做法是用 `TTL + DLX`：消息先进入延迟队列，过期后变成死信，再转发到真正的业务队列。
 
-## 先给结论
-
-这段配置的意思：
-
-```java
-args.put("x-message-ttl", 30 * 1000);
-args.put("x-dead-letter-exchange", ORDER_EXCHANGE);
-args.put("x-dead-letter-routing-key", ORDER_TIMEOUT_ROUTING_KEY);
-```
-
-翻译成人话：
-
-```text
-消息进入这个队列后，最多待 30 秒。
-30 秒后如果还没有被消费，就过期。
-过期消息会被当成死信。
-死信转发到 ORDER_EXCHANGE。
-转发时使用 ORDER_TIMEOUT_ROUTING_KEY。
-最后路由到“订单超时处理队列”。
-```
-
-所以 `x-message-ttl` 是：
-
-```text
-队列级消息 TTL，单位是毫秒，表示消息在这个队列里最多存活多久。
-```
-
-`30 * 1000` 就是 30 秒。
-
 ## 延迟队列的流程
 
 以“订单 30 分钟未支付自动取消”为例：
@@ -665,10 +636,6 @@ where id = ?
 - [ ] 消费时会重新查订单状态。
 - [ ] 取消订单用条件更新兜并发。
 - [ ] 失败消息有 DLQ 或日志。
-
-## 最后记一句话
-
-`x-message-ttl` 不是“定时任务”，它只是消息在队列里的过期时间；配上 `x-dead-letter-exchange` 和 `x-dead-letter-routing-key`，过期消息才会被转发成你想要的“延迟执行”。
 
 ## 参考
 

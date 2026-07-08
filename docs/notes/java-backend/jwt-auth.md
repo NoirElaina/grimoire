@@ -7,19 +7,6 @@ sidebarTitle: JWT 鉴权
 
 > JWT 不是“登录后发个字符串”这么简单，重点是签发、校验、续期、吊销、权限变更。
 
-## 先给结论
-
-一套后端 JWT 鉴权至少要有：
-
-- 登录接口：校验账号密码，签发 `accessToken` 和 `refreshToken`。
-- 鉴权过滤器：解析 `Authorization: Bearer xxx`，写入 `SecurityContext`。
-- 刷新接口：用 refresh token 换新的 access token。
-- 退出接口：吊销 refresh token，必要时拉黑 access token。
-- 密钥管理：不要把签名密钥硬编码在代码里。
-- 权限版本：改密码、禁用账号、改角色后让旧 token 失效。
-
-JWT 能减少每次查 session，但不等于永远不用查 Redis / DB。
-
 ## JWT 长什么样
 
 一个 JWT 是三段用 `.` 连接的字符串：`header.payload.signature`。

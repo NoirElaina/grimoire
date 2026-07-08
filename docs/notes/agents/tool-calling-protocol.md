@@ -7,35 +7,6 @@ sidebarTitle: 工具调用协议
 
 > 工具调用不是“模型想调什么就调什么”。工程里要把工具定义、参数校验、权限、执行、错误、幂等、观测都协议化。
 
-## 先给结论
-
-一个工具协议至少包括：
-
-```text
-tool name
-description
-input schema
-risk level
-permission policy
-timeout
-retry policy
-idempotency key
-result schema
-error schema
-trace metadata
-```
-
-如果只定义：
-
-```json
-{
-  "name": "delete_file",
-  "description": "delete a file"
-}
-```
-
-那不是工具协议，只是危险函数暴露。
-
 ## Tool Definition
 
 ```json

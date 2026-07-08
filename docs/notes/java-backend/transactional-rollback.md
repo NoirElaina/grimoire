@@ -17,37 +17,6 @@ sidebarTitle: Spring 事务回滚
 
 只要方法里抛出 `Exception` 及其子类，并且异常能从事务方法抛出去，就把当前事务标记为回滚。
 
-## 先给结论
-
-Spring 声明式事务默认规则：
-
-| 异常类型 | 默认是否回滚 |
-| --- | --- |
-| `RuntimeException` | 回滚 |
-| `Error` | 回滚 |
-| checked `Exception` | 不回滚 |
-
-加上：
-
-```java
-@Transactional(rollbackFor = Exception.class)
-```
-
-之后：
-
-| 异常类型 | 是否回滚 |
-| --- | --- |
-| `RuntimeException` | 回滚 |
-| `Error` | 回滚 |
-| checked `Exception` | 回滚 |
-
-但它有几个前提：
-
-1. 方法必须被 Spring 事务代理拦截到。
-2. 异常不能在方法内部被吞掉。
-3. 数据库操作必须走同一个事务管理器。
-4. 事务只绑定当前线程，普通新线程里的操作不会自动加入当前事务。
-
 ## 一个最小例子
 
 假设有一个下单方法：
@@ -610,14 +579,6 @@ catch (Exception exception) {
 ```
 
 来赌事务一定会按预期回滚。
-
-## 最后记一句话
-
-`@Transactional(rollbackFor = Exception.class)` 的核心作用是：
-
-**把 checked exception 也纳入 Spring 事务回滚规则。**
-
-但事务能不能真的回滚，还要看代理有没有生效、异常有没有抛出、资源有没有加入同一个事务，以及外部副作用是不是已经发生。
 
 ## 参考
 

@@ -7,29 +7,6 @@ sidebarTitle: 上下文与记忆
 
 > Agent 不是“记性越多越好”。上下文要解决当前任务，记忆要能被检索、更新、失效、审计，否则就是把噪声塞给模型。
 
-## 先给结论
-
-Agent 的信息来源可以分层：
-
-```text
-System / runtime rules：不可变规则
-Task brief：当前任务目标
-Conversation history：对话历史
-Workspace state：当前文件、数据库、环境状态
-Tool results：工具调用结果
-Retrieved knowledge：检索出的外部知识
-Memory：跨会话沉淀的信息
-```
-
-每一层都要回答：
-
-- 谁写入。
-- 什么时候进入上下文。
-- 优先级多高。
-- 过期策略是什么。
-- 是否可信。
-- 是否能被用户删除或修正。
-
 ## 上下文不是全量历史
 
 错误做法：

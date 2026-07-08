@@ -7,29 +7,6 @@ sidebarTitle: MyBatis 核心地基
 
 > MyBatis-Plus 是增强工具，MyBatis 才是地基。先知道 Mapper、XML、参数绑定、结果映射、SqlSession 怎么工作，后面写复杂 SQL 才不慌。
 
-## 先给结论
-
-MyBatis 的核心关系：
-
-```text
-Mapper 接口方法
-  -> mapped statement id
-  -> XML SQL
-  -> 参数绑定
-  -> 执行 SQL
-  -> 结果映射
-  -> 返回 Java 对象
-```
-
-工程里要掌握：
-
-- Mapper 方法和 XML 的 namespace/id 如何对应。
-- 参数怎么传。
-- 结果怎么映射。
-- 动态 SQL 怎么写。
-- 批量操作和分页怎么处理。
-- SQL 写错怎么排查。
-
 ## Mapper 和 XML 怎么对应
 
 Mapper：

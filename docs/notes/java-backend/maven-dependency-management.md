@@ -7,17 +7,6 @@ sidebarTitle: Maven 依赖管理
 
 > Maven 不只是“下载 jar 包”。后端项目依赖冲突、版本不一致、构建失败、线上类找不到，很多都是 Maven 地基没打好。
 
-## 先给结论
-
-Spring Boot 项目先按这几条：
-
-- 使用 Spring Boot parent 或 BOM 管版本。
-- 业务依赖尽量不写版本号，交给 BOM。
-- 第三方库版本集中放 `dependencyManagement`。
-- 不要随手排除传递依赖。
-- 用 `mvn dependency:tree` 查冲突。
-- 多模块项目用父 POM 统一版本。
-
 ## 最小 POM
 
 常见 Spring Boot 项目：

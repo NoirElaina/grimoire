@@ -7,18 +7,6 @@ sidebarTitle: Spring Boot 项目骨架
 
 > 新后端项目先把骨架搭对：包结构、配置、异常、校验、日志、健康检查。
 
-## 先给结论
-
-一个 Spring Boot 项目起步先定这些：
-
-- 包结构按业务和分层稳定下来。
-- DTO / Entity / VO 分开。
-- Controller 只处理 HTTP 入参和出参。
-- Service 放业务语义和事务。
-- Mapper / Repository 只做数据访问。
-- 全局异常、参数校验、日志追踪一开始就接。
-- 配置按环境拆，不把密码、地址写死在代码里。
-
 ## 最小依赖
 
 Web 项目先别堆太多依赖：

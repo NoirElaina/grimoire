@@ -5,7 +5,39 @@ sidebarTitle: synchronized
 
 # Java synchronized
 
-> `synchronized` 解决的是同一 JVM 内多个线程同时访问共享数据的问题。它不是分布式锁，也不能保护多台机器之间的并发。源码题里高频问的是：锁信息存在哪、锁怎么从偏向一路升级到重量级、底层 Monitor 怎么实现。
+> 多线程同时读写同一个共享变量时，"读-改-写"不是原子操作，会丢失更新。`synchronized` 是 Java 内建的锁机制，用来保证同一时刻只有一个线程能进入临界区。它只在一个 JVM 内有效，不是分布式锁。本篇从问题出发，逐步展开锁机制、锁升级和底层实现。
+
+## 解决什么问题
+
+先看一个最典型的并发问题："读-改-写"不是原子操作：
+
+```java
+private int count = 0;
+
+public void increment() {
+    count++;
+}
+```
+
+`count++` 看似一行，实际包含三步：
+
+```text
+读取 count。
+加 1。
+写回 count。
+```
+
+多线程同时执行会丢失更新——两个线程都读到了同一个旧值，各自加 1 后写回，结果只加了 1 而不是 2。加锁后同一时刻只有一个线程能进临界区：
+
+```java
+private int count = 0;
+
+public synchronized void increment() {
+    count++;
+}
+```
+
+这就是 `synchronized` 解决的核心问题：同一 JVM 内多个线程访问共享数据时的竞态条件。
 
 ## 它锁的是什么
 
@@ -56,7 +88,7 @@ monitorexit       // 正常退出释放
 monitorexit       // 异常路径也释放（编译器额外生成）
 ```
 
-有两个 `monitorexit` 是为了保证抛异常时也能释放锁，这就是 `synchronized` “自动释放、不会忘 unlock”的来源。
+有两个 `monitorexit` 是为了保证抛异常时也能释放锁，这就是 `synchronized` "自动释放、不会忘 unlock"的来源。
 
 同步**方法**没有 monitor 指令，而是在方法的 access flags 上打了 `ACC_SYNCHRONIZED`，JVM 调用时隐式做加锁解锁，本质一样。
 
@@ -76,7 +108,7 @@ monitorexit       // 异常路径也释放（编译器额外生成）
 
 ## 锁升级
 
-为了在“几乎没竞争”到“激烈竞争”的不同场景下都不太亏，`synchronized` 的锁会升级，且**只升不降**：
+为了在"几乎没竞争"到"激烈竞争"的不同场景下都不太亏，`synchronized` 的锁会升级，且**只升不降**：
 
 ```text
 无锁 -> 偏向锁 -> 轻量级锁 -> 重量级锁
@@ -86,7 +118,7 @@ monitorexit       // 异常路径也释放（编译器额外生成）
 
 只有一个线程反复进同一把锁时，连 CAS 都嫌贵。偏向锁第一次获取时用 CAS 把线程 ID 写进 Mark Word，之后该线程再进来，只要发现 Mark Word 里是自己的 ID，**不做任何同步操作**直接进。
 
-代价是一旦有别的线程来竞争，要先“撤销偏向”，撤销需要到安全点 stop 持有线程，有成本。所以 **偏向锁在 JDK 15（JEP 374）已被废弃并默认关闭**，新版本里基本不用纠结它，有竞争直接走轻量级锁。
+代价是一旦有别的线程来竞争，要先"撤销偏向"，撤销需要到安全点 stop 持有线程，有成本。所以 **偏向锁在 JDK 15（JEP 374）已被废弃并默认关闭**，新版本里基本不用纠结它，有竞争直接走轻量级锁。
 
 ### 轻量级锁
 
@@ -135,36 +167,6 @@ public synchronized void inner() {
 
 如果不可重入，`outer()` 调 `inner()` 会把自己锁死。
 
-## 解决什么问题
-
-典型问题是“读-改-写”不是原子操作：
-
-```java
-private int count = 0;
-
-public void increment() {
-    count++;
-}
-```
-
-`count++` 大致包含：
-
-```text
-读取 count。
-加 1。
-写回 count。
-```
-
-多线程同时执行会丢失更新。加锁后同一时刻只有一个线程能进：
-
-```java
-private int count = 0;
-
-public synchronized void increment() {
-    count++;
-}
-```
-
 ## 可见性和 happens-before
 
 `synchronized` 不只保证互斥，也保证可见性。
@@ -191,6 +193,8 @@ public synchronized boolean isRunning() {
 ```
 
 前提是读写都使用同一把锁。底层靠的是释放锁时把工作内存刷回主内存、获取锁时从主内存重新读。
+
+这只是 happens-before 八条规则中的「锁规则」一条。完整的 JMM 模型、happens-before 全部规则、内存屏障、`volatile` 的可见性机制见 [Java 并发深度](/notes/java-backend/java-concurrency)，本篇不重复。
 
 ## JIT 的两个优化
 
@@ -401,5 +405,6 @@ synchronized (lock) {
 
 ## 关联笔记
 
+- [Java 并发深度](/notes/java-backend/java-concurrency)（JMM / happens-before / volatile 的完整框架）
 - [Java Lock](/notes/java-backend/java-lock)
 - [Redis 分布式锁](/notes/redis/distributed-lock)

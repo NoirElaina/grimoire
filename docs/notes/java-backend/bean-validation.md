@@ -7,28 +7,6 @@ sidebarTitle: Bean Validation
 
 > 参数校验不是“前端已经校验过了”。后端必须在接口入口把非法数据挡住，并返回稳定的错误码。
 
-## 先给结论
-
-Spring Boot Web 项目里常用组合：
-
-```text
-spring-boot-starter-validation
-@Valid / @Validated
-DTO 字段约束
-全局异常处理
-统一错误码
-```
-
-落地位置：
-
-```text
-Controller：校验 HTTP 入参格式
-Service：校验业务规则
-数据库：用唯一索引、非空、外键或条件更新兜底
-```
-
-不要把所有校验都写在 Controller，也不要只靠注解处理业务规则。
-
 ## 依赖
 
 Spring Boot 3 / 4 项目通常引：

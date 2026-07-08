@@ -7,28 +7,6 @@ sidebarTitle: Java 后端接入
 
 > Java 后端接 MySQL，重点不是能不能查库，而是连接池、事务边界、Mapper SQL、分页、异常转换、缓存一致性和迁移脚本能不能一起工作。
 
-## 先说结论
-
-Java 后端里 MySQL 相关代码要守住这些边界：
-
-```text
-Controller:
-    不直接写数据库。
-
-Service:
-    放业务规则和事务边界。
-
-Mapper:
-    放 SQL 和结果映射。
-
-MySQL:
-    用约束、索引、事务兜住最终一致性。
-```
-
-不要把所有逻辑都塞到 Mapper。
-
-也不要把事务开在 Controller。
-
 ## 连接池配置
 
 Spring Boot 默认常用 HikariCP。

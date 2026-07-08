@@ -7,23 +7,37 @@ sidebarTitle: 专题首页
 
 这一组围绕 Java 后端的“地基 + 工程 + 数据访问 + 事务 + 项目案例”展开。读的时候不要按文件名硬背，先看自己要解决的是语言基础、Spring 工程、数据库访问，还是业务一致性。
 
-## Java 基础
+## Java 集合与流
 
 | 笔记 | 重点 |
 | --- | --- |
 | [Java Stream 使用笔记](/notes/java-backend/java-stream) | 集合流式处理、分组、映射、常见坑 |
 | [Java 常用集合](/notes/java-backend/java-collections) | `List`、`Set`、`Map`、队列、并发集合怎么选 |
 | [Java HashMap 结构](/notes/java-backend/hashmap-structure) | 数组、链表、红黑树、扩容、树化阈值 |
+
+## Java 并发
+
+| 笔记 | 重点 |
+| --- | --- |
 | [JDK 常见线程池](/notes/java-backend/java-thread-pools) | 四类线程池、底层参数、队列和拒绝策略 |
 | [Java ThreadLocal](/notes/java-backend/threadlocal) | `ThreadLocalMap`、弱引用、线程池清理、上下文传递 |
 | [Java synchronized](/notes/java-backend/synchronized) | monitor、可重入、可见性、锁粒度 |
 | [Java Lock](/notes/java-backend/java-lock) | `ReentrantLock`、`tryLock`、`Condition`、读写锁 |
+| [Java 并发深度](/notes/java-backend/java-concurrency) | JMM、`volatile`、CAS/原子类、`ConcurrentHashMap`、`CompletableFuture` |
+
+## Java 设计模式
+
+| 笔记 | 重点 |
+| --- | --- |
+| [Java 设计模式实战](/notes/java-backend/design-patterns) | 策略、工厂、装饰器、代理、观察者、单例、状态机 |
 
 ## Spring 地基
 
 | 笔记 | 重点 |
 | --- | --- |
 | [Spring IoC 与依赖注入](/notes/java-backend/spring-ioc-di) | Bean 创建、注入、生命周期、循环依赖边界 |
+| [Spring AOP](/notes/java-backend/spring-aop) | 动态代理、JDK vs CGLIB、拦截器链、自调用、三级缓存 |
+| [Spring Boot 自动配置](/notes/java-backend/spring-boot-autoconfig) | `@EnableAutoConfiguration`、`@Conditional`、自定义 starter |
 | [Spring MVC 请求链路](/notes/java-backend/spring-mvc-request-flow) | DispatcherServlet、参数绑定、返回值、异常链路 |
 | [Spring Boot 配置文件与 Profile](/notes/java-backend/config-profiles) | 配置分层、环境隔离、敏感配置、启动参数 |
 

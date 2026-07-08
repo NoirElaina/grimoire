@@ -7,28 +7,6 @@ sidebarTitle: Spring IoC / DI
 
 > Spring 地基里最先要懂的不是注解名字，而是：对象谁创建、依赖谁装配、生命周期谁管理。源码题里再往下问容器启动流程、BeanDefinition、`BeanFactory` 与 `ApplicationContext` 的区别，以及两个后置处理器扩展点。
 
-## 先给结论
-
-Spring IoC 容器负责管理 Bean：
-
-```text
-扫描类 / 读取配置
-  -> 创建 BeanDefinition
-  -> 实例化对象
-  -> 注入依赖
-  -> 初始化
-  -> 放进容器
-  -> 业务代码使用
-```
-
-后端项目里要记住：
-
-- 业务对象不要到处 `new`，交给 Spring 管理。
-- 依赖优先构造器注入。
-- Service 写业务，Repository / Mapper 写数据访问。
-- 配置类负责第三方组件 Bean。
-- Bean 的名字、作用域、条件装配要能说清。
-
 ## 什么是 IoC 和 DI
 
 IoC（控制反转）是思想：对象的创建和依赖装配的**控制权**从代码本身反转给容器。DI（依赖注入）是 IoC 的落地手段：容器把依赖注入进来。
@@ -126,7 +104,7 @@ public void refresh() {
 - `BeanFactoryPostProcessor`：典型是 `ConfigurationClassPostProcessor`（解析 `@Configuration`/`@ComponentScan`/`@Bean`）和 `PropertySourcesPlaceholderConfigurer`（替换 `${}` 占位符）。
 - `BeanPostProcessor`：`@Autowired` 注入（`AutowiredAnnotationBeanPostProcessor`）、`@PostConstruct`（`CommonAnnotationBeanPostProcessor`）、AOP 织入（`AbstractAutoProxyCreator`）全靠它。
 
-一句话：**BeanFactoryPostProcessor 改“怎么造”，BeanPostProcessor 改“造出来之后”。**
+简单来说，**BeanFactoryPostProcessor 改"怎么造"，BeanPostProcessor 改"造出来之后"。**
 
 ## 常见 Bean 注解
 
