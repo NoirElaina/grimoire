@@ -5,8 +5,6 @@ sidebarTitle: 专题首页
 
 # RabbitMQ 总览
 
-> RabbitMQ 这组笔记按一条线读：先弄懂消息怎么流，再学本地安装和 Spring Boot 集成。
-
 ## 内容入口
 
 | 分组 | 笔记 | 重点 |

@@ -4,8 +4,6 @@ pageClass: notes-hub
 
 # 笔记
 
-这里是知识库的主入口，先围绕几条主线展开：一条写 Agents，一条写 Java 后端，另外把 Redis、RabbitMQ、MySQL 这种会自然长成体系的主题单独沉淀。入口页只负责选主题，不把所有链接都堆出来。
-
 <div class="notes-topic-grid">
   <section class="notes-topic-card">
     <div class="notes-topic-head">
@@ -72,6 +70,8 @@ pageClass: notes-hub
 ## 通用页
 
 <div class="notes-utility-links">
+  <a href="../capabilities-examples.html">能力示例</a>
   <a href="../markdown-examples.html">写作与发布</a>
   <a href="../api-examples.html">技术摘记</a>
 </div>
+

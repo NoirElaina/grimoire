@@ -5,8 +5,6 @@ sidebarTitle: 专题首页
 
 # Redis 总览
 
-> Redis 专题只记后端项目真正会踩的点：key、TTL、数据结构、缓存异常、一致性、分布式锁、Redisson、Spring Boot 接入。
-
 ## 内容入口
 
 | 分组 | 笔记 | 解决的问题 |
